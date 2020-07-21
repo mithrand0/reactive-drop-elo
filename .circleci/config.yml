@@ -1,0 +1,48 @@
+version: 2.1
+jobs:
+  build:
+    working_directory: ~/repo
+    resource_class: small
+    docker:
+      - image: circleci/buildpack-deps:stable
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Connect to Docker Hub
+          command: docker login -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}"
+      - run:
+          name: Build anticheat layer
+          command: |
+            bin/buildscript.sh --push --quiet
+      - run:
+          name: Extract artifact
+          command: |
+            mkdir -p /tmp/artifacts
+            docker run -d mithrand0/reactive-drop-elo:latest
+            CONTAINER_ID=$(docker ps -alq)            
+            docker cp $CONTAINER_ID:/rd_elo.smx /tmp/artifacts/
+            docker stop $CONTAINER_ID
+      - store_artifacts:
+          path: /tmp/artifacts
+          destination: release
+
+  publish-github-release:
+    docker:
+      - image: circleci/golang:1.8
+    steps:
+      - attach_workspace:
+          at: ./artifacts
+      - run:
+          name: "Publish Release on GitHub"
+          command: |
+            go get github.com/tcnksm/ghr
+            VERSION=$(my-binary --version)
+            ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete ${VERSION} ./artifacts/
+# workflow for this project
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build:
+          context: build
