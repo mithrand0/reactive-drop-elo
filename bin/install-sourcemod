@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+# meta- and sourcemod
+mm_base="https://mms.alliedmods.net/mmsdrop/1.11"
+sm_base="https://sm.alliedmods.net/smdrop/1.10/"
+
+# switch install directory
+cd /root/reactivedrop/reactivedrop
+
+# get metamod
+latest=$(wget -q -O- "${mm_base}/mmsource-latest-windows")
+wget "${mm_base}/${latest}" -O /tmp/metamod.zip
+unzip -x /tmp/metamod.zip
+
+# get sourcemod
+latest=$(wget -q -O- "${sm_base}/sourcemod-latest-windows")
+wget "${sm_base}/${latest}" -O /tmp/sourcemod.zip
+unzip -x /tmp/sourcemod.zip
+
+# remove nextmap.smx
+find /root/reactivedrop/reactivedrop -type f -name 'nextmap.smx' -delete
