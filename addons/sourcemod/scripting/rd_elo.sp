@@ -11,7 +11,6 @@
 /* SM Includes */
 #include <sourcemod>
 #include <sdktools>
-#include <anticheat>
 
 #define VERSION "0.0.1"
 
