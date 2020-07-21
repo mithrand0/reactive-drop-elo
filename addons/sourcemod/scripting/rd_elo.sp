@@ -31,7 +31,7 @@ public void OnPluginStart()
 
 int GetMapECEVanilla()
 {
-	string map = GetMapName().tolower();
+	char map[] = GetMapName().tolower();
 	switch(map)
 	{
 		case "asi-jac1-landingbay_01":
@@ -135,7 +135,7 @@ int GetMapECEVanilla()
 
 int GetMapECEASBI()
 {
-	string map = GetMapName().tolower();
+	char map[] = GetMapName().tolower();
 	switch(map)
 	{
 		case "asi-jac1-landingbay_01":
