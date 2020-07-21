@@ -1,5 +1,5 @@
 /*
-    SourceMod Anti-Cheat
+    SourceMod RD Matchmaking & ELO
     Copyright (C) 2020 jhheight
 
     This program is private software. You are not allowed to use, modify, copy
