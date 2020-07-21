@@ -6,7 +6,7 @@ export DOCKER_BUILDKIT=0
 
 # params
 self=$0
-container="anticheat"
+container="elo"
 all=$*
 
 # sanitize
@@ -47,7 +47,7 @@ function build_container() {
   # params
   container=$1
   prefix="mithrand0/reactive-drop"
-  name="${prefix}-anticheat"
+  name="${prefix}-elo"
   version=$(last_build_version)
   target="Dockerfile"
 
