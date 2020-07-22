@@ -75,7 +75,7 @@ public Action:PlayerConnected(Handle:event, const String:name[])
 
 void CheckChallengeSupported()
 {
-	char[] ChallengeName = ; // need a way to get the challenge name
+	char[] ChallengeName = Convars.GetStr("rd_challenge");
 	if (ChallengeName == "ASBI Ranked")
 	{
 		MapECE = GetMapECEASBI();
