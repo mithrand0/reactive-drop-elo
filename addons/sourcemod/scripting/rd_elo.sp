@@ -214,7 +214,7 @@ int GetMapECEVanilla()
 		case "rd-tft3spaceport":
 			return 1600;
 		case "rd-til1midnightport":
-			return 1700;
+			return 1650;
 		case "rd-til2roadtodawn":
 			return 1350;
 		case "rd-til3arcticinfiltration":
