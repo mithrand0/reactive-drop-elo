@@ -24,6 +24,14 @@ public Plugin myinfo =
     version =       VERSION
 };
 
+"ELOdb"
+{
+	"host"              "localhost"
+        "database"          ""	// something here
+        "user"              ""	// something here
+        "pass"              ""
+}
+
 bool ChallengeSupported;
 int MapECE;
 int PlayerCount;
@@ -33,10 +41,26 @@ float AverageGroupELO;
 
 public void OnPluginStart()
 {
+	Database.Connect(GotDatabase);
 	HookEvent("player_connect", PlayerConnected);
 	HookEvent("game_start", GameplayStart);
 	HookEvent("mission_success", MissionSuccess);
 	HookEvent("mission_failed", MissionFailed);
+}
+
+Database hDatabase = null;
+ 
+public void GotDatabase(Database db, const char[] error, any data)
+{
+    db = SQL_Connect("ELOdb", true, error, sizeof(error));
+    if (db == null)
+    {
+        LogError("Database failure: %s", error);
+    } 
+    else 
+    {
+        hDatabase = db;
+    }
 }
 
 public Action:PlayerConnected(Handle:event, const String:name[])
@@ -51,7 +75,7 @@ public Action:PlayerConnected(Handle:event, const String:name[])
 
 void CheckChallengeSupported()
 {
-	char ChallengeName[] = ; // need a way to get the challenge name
+	char[] ChallengeName = ; // need a way to get the challenge name
 	if (ChallengeName == "ASBI Ranked")
 	{
 		MapECE = GetMapECEASBI();
@@ -74,9 +98,9 @@ public Action:GameplayStart()
 	CheckChallengeSupported();
 	if(ChallengeSupported)
 	{
-		char hPlayer[] = "null";
+		char[] hPlayer = null;
 		PlayerCount = 0;
-		while((hPlayer = Entities.FindByClassname(hPlayer, "player")) != "null")
+		while((hPlayer = Entities.FindByClassname(hPlayer, "player")) != null)
 		{
 			/*
 				todo:
@@ -101,8 +125,8 @@ public Action:MissionSuccess()
 		{
 			EloChanger(true, PlayerELOs[i]);
 		}
+		WriteDatabase();
 	}
-	WriteDatabase();
 }
 
 public Action:MissionFailed()
@@ -113,8 +137,8 @@ public Action:MissionFailed()
 		{
 			EloChanger(false, PlayerELOs[i]);
 		}
+		WriteDatabase();
 	}
-	WriteDatabase();
 }
 
 void WriteDatabase()
@@ -124,7 +148,7 @@ void WriteDatabase()
 
 int GetMapECEVanilla()
 {
-	char map[] = GetMapName().tolower();
+	char[] map = GetMapName().tolower();
 	switch(map)
 	{
 		case "asi-jac1-landingbay_01":
@@ -228,7 +252,7 @@ int GetMapECEVanilla()
 
 int GetMapECEASBI()
 {
-	char map[] = GetMapName().tolower();
+	char[] map = GetMapName().tolower();
 	switch(map)
 	{
 		case "asi-jac1-landingbay_01":
@@ -335,21 +359,23 @@ void EloChanger(bool MatchCondition, float &CurrentELO)	// elo calculator
 	if (MatchCondition)	// if the team succeeded in completing the map
 	{
 		float GainTotalELO = (MapECE - AverageGroupELO + 600) / 10;
-		if (GainTotalELO <= 4) return 1;
+		if (GainTotalELO <= 4)
+		{
+			CurrentELO++;
+			return;
+		}
 		else 
 		{
-			float GainELO = 1 / (CurrentELO / AverageGroupELO) * GainTotalELO; 
-			return GainELO;
+			CurrentELO += 1 / (CurrentELO / AverageGroupELO) * GainTotalELO;
 		}
 	}
 	else	// if the team did not succeed
 	{
 		float LoseTotalELO = (AverageGroupELO - MapECE + 600) / 10;
-		if (LoseTotalELO <= 0) return 0;
+		if (LoseTotalELO <= 0) return;
 		else 
 		{
-			float LoseELO = (CurrentELO / AverageGroupELO) * LoseTotalELO;
-			return -LoseELO;
+			CurrentELO -= (CurrentELO / AverageGroupELO) * LoseTotalELO;
 		}
 	}
 }
