@@ -24,9 +24,102 @@ public Plugin myinfo =
     version =       VERSION
 };
 
+bool ChallengeSupported;
+int MapECE;
+int PlayerCount;
+float PlayerELOs[];
+float TotalELO = 0;
+float AverageGroupELO;
+
 public void OnPluginStart()
 {
+	HookEvent("player_connect", PlayerConnected);
+	HookEvent("game_start", GameplayStart);
+	HookEvent("mission_success", MissionSuccess);
+	HookEvent("mission_failed", MissionFailed);
+}
 
+public Action:PlayerConnected(Handle:event, const String:name[])
+{
+	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	/*
+		todo:
+		search the userid in the database, if don't find then add to database and assign 1000 elo, type his name and elo in chat.
+		if find then fetch his elo and type his name and elo in chat.
+	*/
+}
+
+void CheckChallengeSupported()
+{
+	char ChallengeName[] = ; // need a way to get the challenge name
+	if (ChallengeName == "ASBI Ranked")
+	{
+		MapECE = GetMapECEASBI();
+		ChallengeSupported = true;
+	}
+	else if (ChallengeName == "Vanilla Ranked")
+	{
+		MapECE = GetMapECEVanilla();
+		ChallengeSupported = true;
+	}
+	else
+	{
+		ChallengeSupported = false;
+		// need to say in chat that challenge not supported by the plugin and also cancel other function executions ideally
+	}
+}
+
+public Action:GameplayStart()
+{
+	CheckChallengeSupported();
+	if(ChallengeSupported)
+	{
+		char hPlayer[] = "null";
+		PlayerCount = 0;
+		while((hPlayer = Entities.FindByClassname(hPlayer, "player")) != "null")
+		{
+			/*
+				todo:
+				save players' userid and elo in 2 global arrays which will be used in either mission success or mission failed functions.
+			*/
+			PlayerCount++;
+		}
+		for (int i = 0; i < PlayerCount; i++)
+		{
+			TotalELO += PlayerELOs[i];
+		}
+		AverageGroupELO = TotalELO / PlayerCount;
+		// type MapECE and AverageGroupELO in chat about a second after gameplaystart
+	}
+}
+
+public Action:MissionSuccess()
+{
+	if (ChallengeSupported)
+	{
+		for (int i = 0; i < PlayerCount; i++)
+		{
+			EloChanger(true, PlayerELOs[i]);
+		}
+	}
+	WriteDatabase();
+}
+
+public Action:MissionFailed()
+{
+	if (ChallengeSupported)
+	{
+		for (int i = 0; i < PlayerCount; i++)
+		{
+			EloChanger(false, PlayerELOs[i]);
+		}
+	}
+	WriteDatabase();
+}
+
+void WriteDatabase()
+{
+	// use 2 global arrays for steam id and elo to change the elo data in the database
 }
 
 int GetMapECEVanilla()
@@ -237,7 +330,7 @@ int GetMapECEASBI()
 	}
 }
 
-int EloChanger(bool MatchCondition, float CurrentELO, float AverageGroupELO, int MapECE)
+void EloChanger(bool MatchCondition, float &CurrentELO)	// elo calculator
 {
 	if (MatchCondition)	// if the team succeeded in completing the map
 	{
@@ -245,7 +338,6 @@ int EloChanger(bool MatchCondition, float CurrentELO, float AverageGroupELO, int
 		if (GainTotalELO <= 4) return 1;
 		else 
 		{
-			//float GainELO = pow((CurrentELO / (PlayerCount * AverageGroupELO) - 1),6) * pow(GainTotalELO,1.25);
 			float GainELO = 1 / (CurrentELO / AverageGroupELO) * GainTotalELO; 
 			return GainELO;
 		}
@@ -256,7 +348,6 @@ int EloChanger(bool MatchCondition, float CurrentELO, float AverageGroupELO, int
 		if (LoseTotalELO <= 0) return 0;
 		else 
 		{
-			//float LoseELO = -pow((CurrentELO / (PlayerCount * AverageGroupELO)),3) * pow(LoseTotalELO,1.8);
 			float LoseELO = (CurrentELO / AverageGroupELO) * LoseTotalELO;
 			return -LoseELO;
 		}
