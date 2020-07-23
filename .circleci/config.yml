@@ -12,7 +12,7 @@ jobs:
           name: Connect to Docker Hub
           command: docker login -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}"
       - run:
-          name: Build anticheat layer
+          name: Build elo module
           command: |
             bin/buildscript.sh --push --quiet
       - run:
