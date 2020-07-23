@@ -193,113 +193,113 @@ void WriteDatabase()
 
 int GetMapECEVanilla()
 {
-    char map[128];
+    // char map[128];
 
-    switch(map)
-    {
-        case "asi-jac1-landingbay_01":
-            return 1200;
-        case "asi-jac1-landingbay_02":
-            return 1300;
-        case "asi-jac2-deima":
-            return 1000;
-        case "asi-jac3-rydberg":
-            return 1400;
-        case "asi-jac4-residential":
-            return 1600;
-        case "asi-jac6-sewerjunction":
-            return 1000;
-        case "asi-jac7-timorstation":
-            return 1500;
-        case "rd-area9800lz":
-            return 1500;
-        case "rd-area9800pp1":
-            return 1400;
-        case "rd-area9800pp2":
-            return 1300;
-        case "rd-area9800wl":
-            return 1300;
-        case "rd-lan1_bridge":
-            return 1750;
-        case "rd-lan2_sewer":
-            return 1400;
-        case "rd-lan3_maintenance":
-            return 1650;
-        case "rd-lan4_vent":
-            return 1400;
-        case "rd-lan5_complex":
-            return 1350;
-        case "rd-ocs1storagefacility":
-            return 900;
-        case "rd-ocs2landingbay7":
-            return 1050;
-        case "rd-ocs3uscmedusa":
-            return 1100;
-        case "rd-par1unexpected_encounter":
-            return 1350;
-        case "rd-par2hostile_places":
-            return 1250;
-        case "rd-par3close_contact":
-            return 1400;
-        case "rd-par4high_tension":
-            return 1800;
-        case "rd-par5crucial_point":
-            return 1300;
-        case "rd-res1forestentrance":
-            return 1200;
-        case "rd-res2research7":
-            return 1200;
-        case "rd-res3miningcamp":
-            return 1450;
-        case "rd-res4mines":
-            return 1350;
-        case "rd-tft1desertoutpost":
-            return 1750;
-        case "rd-tft2abandonedmaintenance":
-            return 1300;
-        case "rd-tft3spaceport":
-            return 1600;
-        case "rd-til1midnightport":
-            return 1650;
-        case "rd-til2roadtodawn":
-            return 1350;
-        case "rd-til3arcticinfiltration":
-            return 1350;
-        case "rd-til4area9800":
-            return 1450;
-        case "rd-til5coldcatwalks":
-            return 1400;
-        case "rd-til6yanaurusmine":
-            return 1400;
-        case "rd-til7factory":
-            return 1500;
-        case "rd-til8comcenter":
-            return 1450;
-        case "rd-til9syntekhospital":
-            return 1500;
-        case "rd-bonus_mission1":
-            return 1500;
-        case "rd-bonus_mission2":
-            return 1400;
-        case "rd-bonus_mission3":
-            return 1600;
-        case "rd-bonus_mission4":
-            return 1650;
-        case "rd-bonus_mission5":
-            return 1700;
-        case "rd-bonus_mission6":
-            return 1750;
-        case "rd-bonus_mission7":
-            return 1850;
-        default:    // need create a check if mapece > 0 in main
-            return -1;
-    }
+    // switch(map)
+    // {
+    //     case "asi-jac1-landingbay_01":
+    //         return 1200;
+    //     case "asi-jac1-landingbay_02":
+    //         return 1300;
+    //     case "asi-jac2-deima":
+    //         return 1000;
+    //     case "asi-jac3-rydberg":
+    //         return 1400;
+    //     case "asi-jac4-residential":
+    //         return 1600;
+    //     case "asi-jac6-sewerjunction":
+    //         return 1000;
+    //     case "asi-jac7-timorstation":
+    //         return 1500;
+    //     case "rd-area9800lz":
+    //         return 1500;
+    //     case "rd-area9800pp1":
+    //         return 1400;
+    //     case "rd-area9800pp2":
+    //         return 1300;
+    //     case "rd-area9800wl":
+    //         return 1300;
+    //     case "rd-lan1_bridge":
+    //         return 1750;
+    //     case "rd-lan2_sewer":
+    //         return 1400;
+    //     case "rd-lan3_maintenance":
+    //         return 1650;
+    //     case "rd-lan4_vent":
+    //         return 1400;
+    //     case "rd-lan5_complex":
+    //         return 1350;
+    //     case "rd-ocs1storagefacility":
+    //         return 900;
+    //     case "rd-ocs2landingbay7":
+    //         return 1050;
+    //     case "rd-ocs3uscmedusa":
+    //         return 1100;
+    //     case "rd-par1unexpected_encounter":
+    //         return 1350;
+    //     case "rd-par2hostile_places":
+    //         return 1250;
+    //     case "rd-par3close_contact":
+    //         return 1400;
+    //     case "rd-par4high_tension":
+    //         return 1800;
+    //     case "rd-par5crucial_point":
+    //         return 1300;
+    //     case "rd-res1forestentrance":
+    //         return 1200;
+    //     case "rd-res2research7":
+    //         return 1200;
+    //     case "rd-res3miningcamp":
+    //         return 1450;
+    //     case "rd-res4mines":
+    //         return 1350;
+    //     case "rd-tft1desertoutpost":
+    //         return 1750;
+    //     case "rd-tft2abandonedmaintenance":
+    //         return 1300;
+    //     case "rd-tft3spaceport":
+    //         return 1600;
+    //     case "rd-til1midnightport":
+    //         return 1650;
+    //     case "rd-til2roadtodawn":
+    //         return 1350;
+    //     case "rd-til3arcticinfiltration":
+    //         return 1350;
+    //     case "rd-til4area9800":
+    //         return 1450;
+    //     case "rd-til5coldcatwalks":
+    //         return 1400;
+    //     case "rd-til6yanaurusmine":
+    //         return 1400;
+    //     case "rd-til7factory":
+    //         return 1500;
+    //     case "rd-til8comcenter":
+    //         return 1450;
+    //     case "rd-til9syntekhospital":
+    //         return 1500;
+    //     case "rd-bonus_mission1":
+    //         return 1500;
+    //     case "rd-bonus_mission2":
+    //         return 1400;
+    //     case "rd-bonus_mission3":
+    //         return 1600;
+    //     case "rd-bonus_mission4":
+    //         return 1650;
+    //     case "rd-bonus_mission5":
+    //         return 1700;
+    //     case "rd-bonus_mission6":
+    //         return 1750;
+    //     case "rd-bonus_mission7":
+    //         return 1850;
+    //     default:    // need create a check if mapece > 0 in main
+    return -1;
+    // }
 }
 
 int GetMapECEASBI()
 {
-    char map[128];
-    map = "TODO: detect";
+    // char map[128];
+    // map = "TODO: detect";
     
     // switch(map)
     // {
@@ -398,7 +398,7 @@ int GetMapECEASBI()
     //     case "rd-bonus_mission7":
     //         return 2800;
     //     default:    // need create a check if mapece > 0 in main
-            return -1;
+    return -1;
     // }
 }
 
