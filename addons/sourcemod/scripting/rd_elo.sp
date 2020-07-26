@@ -18,7 +18,7 @@
 public Plugin myinfo =
 {
     name =          "AS:RD ELO`",
-    author =        "jhheight",
+    author =        "jhheight, Mithrand",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
     version =       VERSION
@@ -32,41 +32,41 @@ int PlayerCount = -1;
 int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
 float AverageGroupELO = 0.0;
-
-Database hDatabase = null;
+Database hDatabase;
  
 public void OnPluginStart()
 {
+    char dbError[256];
+    hDatabase = SQL_Connect("elo", true, dbError, sizeof(dbError));
+
+    if (hDatabase == null) {
+        PrintToServer(dbError);
+    }
+
     currentChallenge = FindConVar("rd_challenge");
     currentDifficulty = FindConVar("asw_skill");
 
-    HookEvent("game_start", GameplayStart, EventHookMode_PostNoCopy);
-    HookEvent("mission_success", MissionSuccess);
-    HookEvent("mission_failed", MissionFailed);
+    HookEvent("game_start", TestEvent, EventHookMode_Post);
+    HookEvent("round_start", TestEvent, EventHookMode_Post);
+    HookEvent("game_newmap", TestEvent, EventHookMode_Post);
+    HookEvent("asw_mission_restart", TestEvent, EventHookMode_Post);
+    HookEvent("mission_success", TestEvent, EventHookMode_Post);
+
+    PrintToServer("[RD] ELO ranking initing");
+
+    // init clients
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && !IsFakeClient(i)) {
+            OnClientConnected(i);
+        }
+    }
+
 }
 
 /************************************/
 // Database                 
 /************************************/
-public void ConnectDB()
-{
-    if (!hDatabase) {
-        Database.Connect(GotDatabase);
-    }
-}
-
-public void GotDatabase(Database db, const char[] error, any data)
-{
-    if (db == null)
-    {
-        LogError("ELO Database failure: %s", error);
-    } 
-    else 
-    {
-        delete db;
-    }
-}
-
 public int FetchResult(Database db, DBResultSet results, const char[] error)
 {
     int value = 0;
@@ -93,39 +93,48 @@ public int FetchResult(Database db, DBResultSet results, const char[] error)
 /************************************/
 public void OnClientConnected(int client)
 {
+    PrintToServer("[RD] fetching client ELO");
+
     int steamid = GetSteamAccountID(client);
     char query[256];
-    FormatEx(query, sizeof(query), "SELECT elo FROM users WHERE steamid = %d", steamid);
+    FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
     hDatabase.Query(FetchPlayerElo, query, client);
 }
 
-public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, any data)
+public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, int client)
 {
-    int client = 0;
-    if ((client = GetClientOfUserId(data)) == 0) {
-        // client disconnected
-        return;
-    }
+    PrintToServer("Client elo fetched");
 
     // fetch
     int result = FetchResult(db, results, error);
     if (result == 0) {
         result = 1000; // default elo
+        PrintToServer("Assigning default elo");
+    } else {
+        PrintToServer("Assigned elo %d", result);
     }
 
     PlayerELOs[client] = result;
 }
 
+
+public void TestEvent(Event event, const char[] name, bool dontBroadcast)
+{
+    PrintToServer("Event fired: %s", name);
+}
+
 /************************************/
 // Map starts, fetch the ECE
 /************************************/
-public Action:GameplayStart(Event event, const char[] name, bool dontBroadcast)
+public void MapStart(Event event, const char[] name, bool dontBroadcast)
 {
+    PrintToServer("[RD] starting map");
+
     TotalELO = 0;
     AverageGroupELO = 0.0;
 
     int players = 0;
-    for (new i = 1; i <= MAXPLAYERS; i++)
+    for (new i = 1; i <= MaxClients; i++)
     {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
             TotalELO += PlayerELOs[i];
@@ -165,18 +174,11 @@ public void FetchMapECE(Database db, DBResultSet results, const char[] error, an
 /************************************/
 // Map finished, recalculate elo's
 /************************************/
-public Action:MissionSuccess(Event event, const char[] name, bool dontBroadcast)
+public void OnMapEnd()
 {
-    for (new i = 1; i <= MAXPLAYERS; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) {
-            UpdateElo(i, true);
-        }
-    }
-}
+    PrintToServer("[RD] map failed elo");
 
-public Action:MissionFailed(Event event, const char[] name, bool dontBroadcast)
-{
-    for (new i = 1; i <= MAXPLAYERS; i++) {
+    for (new i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
             UpdateElo(i, false);
         }
@@ -204,8 +206,7 @@ public int UpdateElo(int client, bool success)
     else    // if the team did not succeed
     {
         float LoseTotalELO = (AverageGroupELO - MapECE + 600) / 10;
-        if (LoseTotalELO <= 0) return;
-        else 
+        if (LoseTotalELO > 0)
         {
             NewELO = CurrentELO - (CurrentELO / AverageGroupELO) * LoseTotalELO;
         }
