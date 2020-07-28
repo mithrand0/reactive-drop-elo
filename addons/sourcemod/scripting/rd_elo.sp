@@ -33,6 +33,9 @@ int PlayerCount = -1;
 int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
 float AverageGroupELO = 0.0;
+
+
+bool enableDb = false;
 Database hDatabase;
 
 new String:test_events[][] = { 
@@ -124,7 +127,13 @@ public void OnClientConnected(int client)
     int steamid = GetSteamAccountID(client);
     char query[256];
     FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-    hDatabase.Query(FetchPlayerElo, query, client);
+
+    if (enableDb) {
+        hDatabase.Query(FetchPlayerElo, query, client);
+    } else {
+        // XXX: test elo
+        PlayerELOs[client] = 0;
+    }
 }
 
 public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, int client)
@@ -246,7 +255,10 @@ public int UpdateElo(int client, bool success)
     int steamid = GetSteamAccountID(client);
     char query[1024];
     FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, elo) values (%d, %d)", steamid, NewELO);
-    hDatabase.Query(UpdateDBElo, query, client);
+
+    if (enableDb) {
+        hDatabase.Query(UpdateDBElo, query, client);
+    }
 
     PlayerELOs[client] = RoundFloat(NewELO);
 }
