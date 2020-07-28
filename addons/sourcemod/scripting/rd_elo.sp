@@ -54,12 +54,14 @@ public void OnPluginStart()
     PrintToServer("[ELO] connecting to db");
 
     char dbError[256];
-    hDatabase = SQL_Connect("elo", true, dbError, sizeof(dbError));
+    if (enableDb) {
+        hDatabase = SQL_Connect("elo", true, dbError, sizeof(dbError));
 
-    if (hDatabase == null) {
-        PrintToServer(dbError);
+        if (hDatabase == null) {
+            PrintToServer(dbError);
+        }
     }
-
+    
     PrintToServer("[ELO] hooking convars");
     currentChallenge = FindConVar("rd_challenge");
     currentDifficulty = FindConVar("asw_skill");
