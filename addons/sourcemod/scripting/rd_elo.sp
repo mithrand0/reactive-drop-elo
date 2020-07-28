@@ -11,6 +11,7 @@
 /* SM Includes */
 #include <sourcemod>
 #include <sdktools>
+#include <sdkhooks>
 
 #define VERSION "0.0.1"
 
@@ -33,9 +34,22 @@ int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
 float AverageGroupELO = 0.0;
 Database hDatabase;
+
+new String:test_events[][] = { 
+    "game_init", 
+    "asw_mission_restart",
+    "alien_died", 
+    "marine_selected",
+    "difficulty_changed",
+    "mission_success",
+    "mission_failed",
+    "button_area_active"
+};
  
 public void OnPluginStart()
 {
+    PrintToServer("[ELO] connecting to db");
+
     char dbError[256];
     hDatabase = SQL_Connect("elo", true, dbError, sizeof(dbError));
 
@@ -43,16 +57,11 @@ public void OnPluginStart()
         PrintToServer(dbError);
     }
 
+    PrintToServer("[ELO] hooking convars");
     currentChallenge = FindConVar("rd_challenge");
     currentDifficulty = FindConVar("asw_skill");
 
-    HookEvent("game_start", TestEvent, EventHookMode_Post);
-    HookEvent("round_start", TestEvent, EventHookMode_Post);
-    HookEvent("game_newmap", TestEvent, EventHookMode_Post);
-    HookEvent("asw_mission_restart", TestEvent, EventHookMode_Post);
-    HookEvent("mission_success", TestEvent, EventHookMode_Post);
-
-    PrintToServer("[RD] ELO ranking initing");
+    PrintToServer("[ELO] ELO ranking initing");
 
     // init clients
     for (new i = 1; i <= MaxClients; i++)
@@ -62,6 +71,23 @@ public void OnPluginStart()
         }
     }
 
+    PrintToServer("[ELO] mass hooking events");
+    bool eventHookLoaded;
+
+    for (new v=0; v<sizeof(test_events); v++) {
+        eventHookLoaded = HookEventEx(test_events[v], Event_Test, EventHookMode_Pre);
+        if (eventHookLoaded) {
+            PrintToServer("[HOOK] Eventhook loader: %s", test_events[v]);
+        } else {
+            PrintToServer("[HOOK FAILED] Eventhook failed: %s", test_events[v]);
+        }
+    }
+}
+
+public Action Event_Test(Event event, const char[] name, bool dontBroadcast)
+{
+    PrintToServer("[EVENT TRIGGERED] Event: %s", name);
+    return Plugin_Continue;
 }
 
 /************************************/
@@ -93,7 +119,7 @@ public int FetchResult(Database db, DBResultSet results, const char[] error)
 /************************************/
 public void OnClientConnected(int client)
 {
-    PrintToServer("[RD] fetching client ELO");
+    PrintToServer("[ELO] fetching client ELO");
 
     int steamid = GetSteamAccountID(client);
     char query[256];
@@ -103,32 +129,26 @@ public void OnClientConnected(int client)
 
 public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, int client)
 {
-    PrintToServer("Client elo fetched");
+    PrintToServer("[ELO] Client elo fetched");
 
     // fetch
     int result = FetchResult(db, results, error);
     if (result == 0) {
         result = 1000; // default elo
-        PrintToServer("Assigning default elo");
+        PrintToServer("[ELO] Assigning default elo");
     } else {
-        PrintToServer("Assigned elo %d", result);
+        PrintToServer("[ELO] Assigned elo %d", result);
     }
 
     PlayerELOs[client] = result;
 }
 
-
-public void TestEvent(Event event, const char[] name, bool dontBroadcast)
-{
-    PrintToServer("Event fired: %s", name);
-}
-
 /************************************/
 // Map starts, fetch the ECE
 /************************************/
-public void MapStart(Event event, const char[] name, bool dontBroadcast)
+public void OnMapStart()
 {
-    PrintToServer("[RD] starting map");
+    PrintToServer("[ELO] starting map");
 
     TotalELO = 0;
     AverageGroupELO = 0.0;
@@ -174,15 +194,25 @@ public void FetchMapECE(Database db, DBResultSet results, const char[] error, an
 /************************************/
 // Map finished, recalculate elo's
 /************************************/
-public void OnMapEnd()
+public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
 {
-    PrintToServer("[RD] map failed elo");
+    UpdatePlayerElos(false);
+    return Plugin_Continue;
+}
 
+public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
+{
+    UpdatePlayerElos(true);
+    return Plugin_Continue;
+}
+
+public void UpdatePlayerElos(bool success)
+{
     for (new i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
-            UpdateElo(i, false);
+            UpdateElo(i, success);
         }
-    }
+    }    
 }
 
  // elo calculator
