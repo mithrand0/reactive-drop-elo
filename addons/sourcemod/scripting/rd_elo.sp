@@ -1,6 +1,7 @@
 /*
     SourceMod RD Matchmaking & ELO
     Copyright (C) 2020 jhheight
+
     This program is private software. You are not allowed to use, modify, copy
     reverse engineer, duplicate or distribute it in any way without the explicit
     permission of the owner.
@@ -18,7 +19,7 @@
 public Plugin myinfo =
 {
     name =          "AS:RD ELO`",
-    author =        "Mithrand, jhheight",
+    author =        "jhheight, Mithrand",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
     version =       VERSION
@@ -202,7 +203,7 @@ public void OnMapStart()
     currentChallenge.GetString(challenge, sizeof(challenge));
 
     PrintToServer("[RD:event] map: %s", currentMap);
-    PrintToServer("[RD:event] challenge: %s", currentChallenge);
+    PrintToServer("[RD:event] challenge: %s", challenge);
     PrintToServer("[RD:event] difficulty: %d", currentDifficulty.IntValue);
 
     // fetch map elo in the background
@@ -216,15 +217,7 @@ public void OnMapStart()
         challenge
     );
 
-    if (enableDb)
-    {
-        hDatabase.Query(FetchMapECE, query);
-    }
-    else
-    {
-        MapECE = 1500;  // for no database any map is 1500 for testing purposes
-    }
-    PrintToServer("[ELO:db] MapECE: %d", MapECE);
+    hDatabase.Query(FetchMapECE, query);
 }
 
 public void FetchMapECE(Database db, DBResultSet results, const char[] error, any data)
