@@ -19,7 +19,7 @@
 public Plugin myinfo =
 {
     name =          "AS:RD ELO`",
-    author =        "jhheight, Mithrand",
+    author =        "Mithrand, jhheight",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
     version =       VERSION
@@ -29,6 +29,8 @@ int MapECE = 0;
 char currentMap[256];
 ConVar currentChallenge;
 ConVar currentDifficulty;
+int oldDifficulty;
+char oldChallenge[128];
 int PlayerCount = -1;
 int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
@@ -41,12 +43,9 @@ Database hDatabase;
 new String:test_events[][] = { 
     "game_init", 
     "asw_mission_restart",
-    "alien_died", 
-    "marine_selected",
     "difficulty_changed",
     "mission_success",
     "mission_failed",
-    "button_area_active"
 };
  
 public void OnPluginStart()
@@ -67,6 +66,8 @@ public void OnPluginStart()
     PrintToServer("[ELO:hooks] hooking convars");
     currentChallenge = FindConVar("rd_challenge");
     currentDifficulty = FindConVar("asw_skill");
+    oldDifficulty = currentDifficulty.IntValue;
+    currentChallenge.GetString(oldChallenge, sizeof(oldChallenge)); 
 
     // init clients
     PrintToServer("[ELO:init] iterating players");
@@ -81,6 +82,7 @@ public void OnPluginStart()
     PrintToServer("[ELO:hooks] hooking events");
     HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
     HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
+    HookEvent("difficulty_changed", Event_DifficultyChanged, EventHookMode_Pre);
 
     PrintToServer("[ELO:debug] hooking test events");
     bool eventHookLoaded;
@@ -199,25 +201,44 @@ public void OnMapStart()
     // fetch current map
     GetCurrentMap(currentMap, sizeof(currentMap));
 
-    char challenge[128];
-    currentChallenge.GetString(challenge, sizeof(challenge));
-
     PrintToServer("[RD:event] map: %s", currentMap);
-    PrintToServer("[RD:event] challenge: %s", challenge);
-    PrintToServer("[RD:event] difficulty: %d", currentDifficulty.IntValue);
+}
 
-    // fetch map elo in the background
-    char query[256];
-    FormatEx(
-        query,
-        sizeof(query), 
-        "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
-        currentMap,
-        currentDifficulty.IntValue,
-        challenge
-    );
+public Action Event_DifficultyChanged(Event event, const char[] name, bool dontBroadcast)
+{
+    char newChallenge[128];
+    currentChallenge.GetString(newChallenge, sizeof(newChallenge));
+    // DEBUG: (currently should be working though)
+    // PrintToServer("[RD:event] oldChallenge: %s", oldChallenge);
+    // PrintToServer("[RD:event] oldDifficulty: %d", oldDifficulty);
+    if (oldDifficulty != currentDifficulty.IntValue || strcmp(oldChallenge, newChallenge, true) != 0)    // for some reason when you press the challenge button this event is fired twice instantly, this IF should prevent that spam
+    {
+        PrintToServer("[RD:event] challenge: %s", newChallenge);
+        PrintToServer("[RD:event] difficulty: %d", currentDifficulty.IntValue);
+        currentChallenge.GetString(oldChallenge, sizeof(oldChallenge));
+        oldDifficulty = currentDifficulty.IntValue;
+        // fetch map elo in the background
+        char query[256];
+        FormatEx(
+            query,
+            sizeof(query), 
+            "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
+            currentMap,
+            oldDifficulty,
+            newChallenge
+        );
 
-    hDatabase.Query(FetchMapECE, query);
+        hDatabase.Query(FetchMapECE, query);
+        if (MapECE > 0) 
+        {
+            PrintToChatAll("[RD:ELO] Current map ECE: %d", MapECE);
+        }
+        else
+        {
+            PrintToChatAll("[RD:ELO] Map or Challenge not recognised, ELO isn't counted.");
+        }
+    }
+    return Plugin_Continue;
 }
 
 public void FetchMapECE(Database db, DBResultSet results, const char[] error, any data)
