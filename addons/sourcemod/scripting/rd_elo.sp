@@ -72,6 +72,7 @@ public void OnPluginStart()
     PrintToServer("[ELO:init] iterating players");
     for (new i = 1; i <= MaxClients; i++)
     {
+        PlayerELOs[i] = 0;
         if (IsClientInGame(i) && !IsFakeClient(i)) {
             OnClientConnected(i);
         }
@@ -131,20 +132,24 @@ public int FetchResult(Database db, DBResultSet results, const char[] error)
 /************************************/
 public void OnClientConnected(int client)
 {
+    // only init when we have no elo score yet
+    if (PlayerELOs[client] == 0) {
+        int steamid = GetSteamAccountID(client);
+        PrintToServer("[ELO:fetch] searching for steamid: %d", steamid);
 
-    int steamid = GetSteamAccountID(client);
-    PrintToServer("[ELO:fetch] searching for steamid: %d", steamid);
+        char query[256];
+        FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+        PrintToServer("[ELO:query] %s", query);
 
-    char query[256];
-    FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-    PrintToServer("[ELO:query] %s", query);
-
-    if (enableDb) {
-        hDatabase.Query(FetchPlayerElo, query, client);
+        if (enableDb) {
+            hDatabase.Query(FetchPlayerElo, query, client);
+        } else {
+            // XXX: test elo
+            PlayerELOs[client] = GetRandomInt(800, 1200);
+            PrintToServer("[ELO:db] database is disabled, simulating random score: %d", PlayerELOs[client]);
+        }
     } else {
-        // XXX: test elo
-        PlayerELOs[client] = GetRandomInt(800, 1200);
-        PrintToServer("[ELO:db] database is disabled, simulating random score: %d", PlayerELOs[client]);
+        PrintToServer("[ELO:client] Client has elo an elo already: %d", PlayerELOs[client]);
     }
 }
 
