@@ -148,6 +148,11 @@ public void OnClientConnected(int client)
     }
 }
 
+public void OnClientDisconnect(client)
+{
+    PlayerELOs[client] = 0;
+}
+
 public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, int client)
 {
     PrintToServer("[ELO:fetch-result] client elo fetched");
