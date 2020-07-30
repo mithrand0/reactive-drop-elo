@@ -19,7 +19,7 @@
 public Plugin myinfo =
 {
     name =          "AS:RD ELO`",
-    author =        "jhheight, Mithrand",
+    author =        "Mithrand, jhheight",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
     version =       VERSION
@@ -218,6 +218,7 @@ public void OnMapStart()
     );
 
     hDatabase.Query(FetchMapECE, query);
+    PrintToServer("[RD:event] MapECE: %s", MapECE);
 }
 
 public void FetchMapECE(Database db, DBResultSet results, const char[] error, any data)
