@@ -270,8 +270,6 @@ public int UpdateElo(int client, bool success)
         hDatabase.Query(UpdateDBElo, query, client);
     }
 
-    PrintToServer("[ELO:db] writing to DB done");
-
     PlayerELOs[client] = elo;
 }
 
@@ -279,6 +277,7 @@ public void UpdateDBElo(Database db, DBResultSet results, const char[] error, an
 {
     // just verify we had no errors
     FetchResult(db, results, error);
+    PrintToServer("[ELO:db] writing to DB done");
 }
 
 public int calculatePlayerElo(int client, bool success)
