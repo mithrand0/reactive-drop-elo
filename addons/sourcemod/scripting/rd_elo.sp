@@ -211,7 +211,7 @@ public void OnMapStart()
     FormatEx(
         query,
         sizeof(query), 
-        "SELECT score FROM map_score WHERE map_name = '%s' and difficulty = %d and challenge = '%s'", 
+        "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
         currentMap,
         currentDifficulty.IntValue,
         challenge
