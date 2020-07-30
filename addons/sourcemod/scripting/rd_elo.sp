@@ -248,7 +248,7 @@ public void UpdatePlayerElos(bool success)
 }
 
  // elo calculator
-public int UpdateElo(int client, bool success)
+public void UpdateElo(int client, bool success)
 {
     // TODO: jh needs to make this work
     // int elo = calculatePlayerElo(client, success);
