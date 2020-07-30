@@ -35,7 +35,7 @@ int TotalELO = 0;
 float AverageGroupELO = 0.0;
 
 
-bool enableDb = true;
+bool enableDb = false;
 Database hDatabase;
 
 new String:test_events[][] = { 
@@ -72,7 +72,6 @@ public void OnPluginStart()
     PrintToServer("[ELO:init] iterating players");
     for (new i = 1; i <= MaxClients; i++)
     {
-        PlayerELOs[i] = 0;
         if (IsClientInGame(i) && !IsFakeClient(i)) {
             OnClientConnected(i);
         }
@@ -132,30 +131,21 @@ public int FetchResult(Database db, DBResultSet results, const char[] error)
 /************************************/
 public void OnClientConnected(int client)
 {
-    // only init when we have no elo score yet
-    if (PlayerELOs[client] == 0) {
-        int steamid = GetSteamAccountID(client);
-        PrintToServer("[ELO:fetch] searching for steamid: %d", steamid);
 
-        char query[256];
-        FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-        PrintToServer("[ELO:query] %s", query);
+    int steamid = GetSteamAccountID(client);
+    PrintToServer("[ELO:fetch] searching for steamid: %d", steamid);
 
-        if (enableDb) {
-            hDatabase.Query(FetchPlayerElo, query, client);
-        } else {
-            // XXX: test elo
-            PlayerELOs[client] = GetRandomInt(800, 1200);
-            PrintToServer("[ELO:db] database is disabled, simulating random score: %d", PlayerELOs[client]);
-        }
+    char query[256];
+    FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+    PrintToServer("[ELO:query] %s", query);
+
+    if (enableDb) {
+        hDatabase.Query(FetchPlayerElo, query, client);
     } else {
-        PrintToServer("[ELO:client] Client has elo an elo already: %d", PlayerELOs[client]);
+        // XXX: test elo
+        PlayerELOs[client] = GetRandomInt(800, 1200);
+        PrintToServer("[ELO:db] database is disabled, simulating random score: %f", PlayerELOs[client]);
     }
-}
-
-public void OnClientDisconnect(client)
-{
-    PlayerELOs[client] = 0;
 }
 
 public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, int client)
@@ -217,8 +207,15 @@ public void OnMapStart()
         challenge
     );
 
-    hDatabase.Query(FetchMapECE, query);
-    PrintToServer("[RD:event] MapECE: %s", MapECE);
+    if (enableDb)
+    {
+        hDatabase.Query(FetchMapECE, query);
+    }
+    else
+    {
+        MapECE = 1500;  // for no database any map is 1500 for testing purposes
+    }
+    PrintToServer("[ELO:db] MapECE: %d", MapECE);
 }
 
 public void FetchMapECE(Database db, DBResultSet results, const char[] error, any data)
@@ -257,10 +254,10 @@ public void UpdatePlayerElos(bool success)
 public void UpdateElo(int client, bool success)
 {
     // TODO: jh needs to make this work
-    // int elo = calculatePlayerElo(client, success);
+    int elo = calculatePlayerElo(client, success);
 
     // XXX: debug to test it's working
-    int elo = GetRandomInt(0, 666);
+    // int elo = GetRandomInt(0, 666);
     int steamid = GetSteamAccountID(client);
 
     PrintToServer("[ELO:db] writing to DB");
@@ -276,14 +273,15 @@ public void UpdateElo(int client, bool success)
         hDatabase.Query(UpdateDBElo, query, client);
     }
 
-    PlayerELOs[client] = elo;
+    PrintToServer("[ELO:db] writing to DB done");
+
+    PlayerELOs[client] = RoundFloat(elo);
 }
 
 public void UpdateDBElo(Database db, DBResultSet results, const char[] error, any data)
 {
     // just verify we had no errors
     FetchResult(db, results, error);
-    PrintToServer("[ELO:db] writing to DB done");
 }
 
 public int calculatePlayerElo(int client, bool success)
