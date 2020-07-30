@@ -35,7 +35,7 @@ int TotalELO = 0;
 float AverageGroupELO = 0.0;
 
 
-bool enableDb = false;
+bool enableDb = true;
 Database hDatabase;
 
 new String:test_events[][] = { 
@@ -51,24 +51,25 @@ new String:test_events[][] = {
  
 public void OnPluginStart()
 {
-    PrintToServer("[ELO] connecting to db");
-
     char dbError[256];
     if (enableDb) {
+        PrintToServer("[ELO:DB] connecting to database..");
         hDatabase = SQL_Connect("elo", true, dbError, sizeof(dbError));
 
         if (hDatabase == null) {
-            PrintToServer(dbError);
+            PrintToServer("[ELO] error: %s", dbError);
+        } else {
+            PrintToServer("[ELO:DB] connected");
         }
+
     }
     
-    PrintToServer("[ELO] hooking convars");
+    PrintToServer("[ELO:hooks] hooking convars");
     currentChallenge = FindConVar("rd_challenge");
     currentDifficulty = FindConVar("asw_skill");
 
-    PrintToServer("[ELO] ELO ranking initing");
-
     // init clients
+    PrintToServer("[ELO:init] iterating players");
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
@@ -76,22 +77,27 @@ public void OnPluginStart()
         }
     }
 
-    PrintToServer("[ELO] mass hooking events");
+    PrintToServer("[ELO:hooks] hooking events");
+    HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
+    HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
+
+    PrintToServer("[ELO:debug] hooking test events");
     bool eventHookLoaded;
 
+    // XXX: event debugger
     for (new v=0; v<sizeof(test_events); v++) {
         eventHookLoaded = HookEventEx(test_events[v], Event_Test, EventHookMode_Pre);
         if (eventHookLoaded) {
-            PrintToServer("[HOOK] Eventhook loader: %s", test_events[v]);
+            PrintToServer("[ELO:debug] eventhook loaded: %s", test_events[v]);
         } else {
-            PrintToServer("[HOOK FAILED] Eventhook failed: %s", test_events[v]);
+            PrintToServer("[ELO:debug] FAILURE: eventhook failed: %s", test_events[v]);
         }
     }
 }
 
 public Action Event_Test(Event event, const char[] name, bool dontBroadcast)
 {
-    PrintToServer("[EVENT TRIGGERED] Event: %s", name);
+    PrintToServer("[ELO:debug] event fired: %s", name);
     return Plugin_Continue;
 }
 
@@ -101,17 +107,18 @@ public Action Event_Test(Event event, const char[] name, bool dontBroadcast)
 public int FetchResult(Database db, DBResultSet results, const char[] error)
 {
     int value = 0;
+    PrintToServer("[ELO:fetch] default score assigned: %d", value);
 
     // check for errors
     if (db == null || results == null || error[0] != '\0') {
         // client is fucking around
-        LogError("Query failed! %s", error);
+        PrintToServer("[ELO:fetch] failed: %s", error);
         value = -1;
     } else {
         while (SQL_FetchRow(results))
         {
             value = SQL_FetchInt(results, 0);
-            PrintToServer("Value %d was loaded", value);
+            PrintToServer("[ELO:fetch] score assigned: %d", value);
         }
     }
 
@@ -124,31 +131,34 @@ public int FetchResult(Database db, DBResultSet results, const char[] error)
 /************************************/
 public void OnClientConnected(int client)
 {
-    PrintToServer("[ELO] fetching client ELO");
 
     int steamid = GetSteamAccountID(client);
+    PrintToServer("[ELO:fetch] searching for steamid: %d", steamid);
+
     char query[256];
     FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+    PrintToServer("[ELO:query] %s", query);
 
     if (enableDb) {
         hDatabase.Query(FetchPlayerElo, query, client);
     } else {
         // XXX: test elo
-        PlayerELOs[client] = 0;
+        PlayerELOs[client] = GetRandomInt(800, 1200);
+        PrintToServer("[ELO:db] database is disabled, simulating random score: %f", PlayerELOs[client]);
     }
 }
 
 public void FetchPlayerElo(Database db, DBResultSet results, const char[] error, int client)
 {
-    PrintToServer("[ELO] Client elo fetched");
+    PrintToServer("[ELO:fetch-result] client elo fetched");
 
     // fetch
     int result = FetchResult(db, results, error);
     if (result == 0) {
         result = 1000; // default elo
-        PrintToServer("[ELO] Assigning default elo");
+        PrintToServer("[ELO:fetch-result] Assigning default elo");
     } else {
-        PrintToServer("[ELO] Assigned elo %d", result);
+        PrintToServer("[ELO:fetch-result] Assigned elo %d", result);
     }
 
     PlayerELOs[client] = result;
@@ -159,7 +169,7 @@ public void FetchPlayerElo(Database db, DBResultSet results, const char[] error,
 /************************************/
 public void OnMapStart()
 {
-    PrintToServer("[ELO] starting map");
+    PrintToServer("[ELO:event] starting map");
 
     TotalELO = 0;
     AverageGroupELO = 0.0;
@@ -181,6 +191,10 @@ public void OnMapStart()
 
     char challenge[128];
     currentChallenge.GetString(challenge, sizeof(challenge));
+
+    PrintToServer("[RD:event] map: %s", currentMap);
+    PrintToServer("[RD:event] challenge: %s", currentChallenge);
+    PrintToServer("[RD:event] difficulty: %d", currentDifficulty.IntValue);
 
     // fetch map elo in the background
     char query[256];
@@ -207,12 +221,14 @@ public void FetchMapECE(Database db, DBResultSet results, const char[] error, an
 /************************************/
 public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
 {
+    PrintToServer("[ELO:event] Calculating map failed score");
     UpdatePlayerElos(false);
     return Plugin_Continue;
 }
 
 public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
 {
+    PrintToServer("[ELO:event] Calculating map success score");
     UpdatePlayerElos(true);
     return Plugin_Continue;
 }
@@ -228,6 +244,39 @@ public void UpdatePlayerElos(bool success)
 
  // elo calculator
 public int UpdateElo(int client, bool success)
+{
+    // TODO: jh needs to make this work
+    // int elo = calculatePlayerElo(client, success);
+
+    // XXX: debug to test it's working
+    int elo = GetRandomInt(0, 666);
+    int steamid = GetSteamAccountID(client);
+
+    PrintToServer("[ELO:db] writing to DB");
+    PrintToServer("[ELO:db] steamid: %d", steamid);
+    PrintToServer("[ELO:db] elo: %d", elo);
+    
+    // write to the db
+    char query[1024];
+    FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, elo) values (%d, %d)", steamid, elo);
+    PrintToServer("[ELO:query] %s", query);
+
+    if (enableDb) {
+        hDatabase.Query(UpdateDBElo, query, client);
+    }
+
+    PrintToServer("[ELO:db] writing to DB done");
+
+    PlayerELOs[client] = RoundFloat(elo);
+}
+
+public void UpdateDBElo(Database db, DBResultSet results, const char[] error, any data)
+{
+    // just verify we had no errors
+    FetchResult(db, results, error);
+}
+
+public int calculatePlayerElo(int client, bool success)
 {
     int CurrentELO = PlayerELOs[client];
     float NewELO = CurrentELO + 0.0;
@@ -253,20 +302,5 @@ public int UpdateElo(int client, bool success)
         }
     }
 
-    // write to the db
-    int steamid = GetSteamAccountID(client);
-    char query[1024];
-    FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, elo) values (%d, %d)", steamid, NewELO);
-
-    if (enableDb) {
-        hDatabase.Query(UpdateDBElo, query, client);
-    }
-
-    PlayerELOs[client] = RoundFloat(NewELO);
-}
-
-public void UpdateDBElo(Database db, DBResultSet results, const char[] error, any data)
-{
-    // just verify we had no errors
-    FetchResult(db, results, error);
+    return RoundFloat(NewELO);
 }
