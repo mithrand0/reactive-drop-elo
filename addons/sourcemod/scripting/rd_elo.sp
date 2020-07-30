@@ -267,7 +267,7 @@ public int UpdateElo(int client, bool success)
 
     PrintToServer("[ELO:db] writing to DB done");
 
-    PlayerELOs[client] = RoundFloat(elo);
+    PlayerELOs[client] = elo;
 }
 
 public void UpdateDBElo(Database db, DBResultSet results, const char[] error, any data)
