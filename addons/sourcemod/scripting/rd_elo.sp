@@ -144,7 +144,7 @@ public void OnClientConnected(int client)
     } else {
         // XXX: test elo
         PlayerELOs[client] = GetRandomInt(800, 1200);
-        PrintToServer("[ELO:db] database is disabled, simulating random score: %f", PlayerELOs[client]);
+        PrintToServer("[ELO:db] database is disabled, simulating random score: %d", PlayerELOs[client]);
     }
 }
 
