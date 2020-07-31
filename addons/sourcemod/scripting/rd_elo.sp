@@ -185,22 +185,6 @@ public void FetchPlayerElo(Database db, DBResultSet results, const char[] error,
 public void OnMapStart()
 {
     PrintToServer("[ELO:event] starting map");
-
-    TotalELO = 0;
-
-    int players = 0;
-    for (new i = 1; i <= MaxClients; i++)
-    {
-        if (IsClientInGame(i) && !IsFakeClient(i)) {
-            TotalELO += PlayerELOs[i];
-            players++;
-        }
-    }
-    PrintToServer("[RD:Elo] TotalELO = %d", TotalELO);
-    PrintToServer("[RD:Elo] players = %d", players);
-    AverageGroupELO = RoundFloat((TotalELO + 0.0) / players);
-    PrintToServer("[RD:Elo] Average Group ELO = %d", AverageGroupELO);
-
     // fetch current map
     GetCurrentMap(currentMap, sizeof(currentMap));
 
@@ -317,13 +301,37 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 
 public void UpdatePlayerElos(bool success)
 {
+    TotalELO = 0;
+    int players = 0;
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && !IsFakeClient(i)) {
+            TotalELO += PlayerELOs[i];
+            players++;
+        }
+    }
+    PrintToServer("[RD:Elo] TotalELO = %d", TotalELO);
+    PrintToServer("[RD:Elo] players = %d", players);
+    AverageGroupELO = RoundFloat((TotalELO + 0.0) / players);
+    PrintToServer("[RD:Elo] Average Group ELO = %d", AverageGroupELO);
     for (new i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
+            // DataPack PACK_OldEloInfo;
+            // CreateDataTimer(5.0, OldEloInfoPrint, PACK_OldEloInfo);
+            // PACK_OldEloInfo.WriteFloat(i + 0.0);
             PrintToChat(i, "[ELO] Old ELO: %d", PlayerELOs[i]);
             UpdateElo(i, success);
             PrintToChat(i, "[ELO] New ELO: %d", PlayerELOs[i]);
         }
     }    
+}
+
+public Action:OldEloInfoPrint(Handle timer, DataPack PACK_OldEloInfo)
+{
+    int iClient = RoundFloat(PACK_OldEloInfo.ReadFloat());
+    // unpack
+    PrintToChat(iClient, "[ELO] Old ELO: %d", PlayerELOs[iClient]);
+    return Plugin_Continue;
 }
 
  // elo calculator
