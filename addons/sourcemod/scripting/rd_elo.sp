@@ -154,7 +154,7 @@ public void OnClientConnected(int client)
             PrintToServer("[ELO:db] database is disabled, simulating random score: %d", PlayerELOs[client]);
         }
     } else {
-        PrintToServer("[ELO:client] Client has elo an elo already: %d", PlayerELOs[client]);
+        PrintToServer("[ELO:client] Client has elo already: %d", PlayerELOs[client]);
     }
 }
 
@@ -170,7 +170,7 @@ public void FetchPlayerElo(Database db, DBResultSet results, const char[] error,
     // fetch
     int result = FetchResult(db, results, error);
     if (result == 0) {
-        result = 1000; // default elo
+        result = 1500; // default elo
         PrintToServer("[ELO:fetch-result] Assigning default elo");
     } else {
         PrintToServer("[ELO:fetch-result] Assigned elo %d", result);
@@ -187,7 +187,6 @@ public void OnMapStart()
     PrintToServer("[ELO:event] starting map");
 
     TotalELO = 0;
-    AverageGroupELO = 0.0;
 
     int players = 0;
     for (new i = 1; i <= MaxClients; i++)
@@ -197,7 +196,8 @@ public void OnMapStart()
             players++;
         }
     }
-
+    PrintToServer("[RD:Elo] TotalELO = %d", TotalELO);
+    PrintToServer("[RD:Elo] players = %d", players);
     AverageGroupELO = (TotalELO + 0.0) / players;
 
     // fetch current map
@@ -220,16 +220,21 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
         currentChallenge.GetString(oldChallenge, sizeof(oldChallenge));
         oldDifficulty = currentDifficulty.IntValue;
         // fetch map elo in the background
-        char query[256];
-        FormatEx(
-            query,
-            sizeof(query), 
-            "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
-            currentMap,
-            newChallenge
-        );
+        if (enableDb) {
+            char query[256];
+            FormatEx(
+                query,
+                sizeof(query), 
+                "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
+                currentMap,
+                newChallenge
+            );
 
-        hDatabase.Query(FetchMapECE, query);
+            hDatabase.Query(FetchMapECE, query);
+        }
+        else {
+            MapECE = 1600;  // any map has 1600 when DB is off, for testing purposes
+        }
     }
     return Plugin_Continue;
 }
@@ -240,11 +245,11 @@ public void FetchMapECE(Database db, DBResultSet results, const char[] error, an
     MapECE = FetchResult(db, results, error);
     if (MapECE > 0) 
     {
-        PrintToChatAll("[RD:ELO] Current map ECE: %d", MapECE);
+        PrintToChatAll("[ELO] Current map ECE: %d", MapECE);
     }
     else
     {
-        PrintToChatAll("[RD:ELO] Map or Challenge not recognised, ELO isn't counted.");
+        PrintToChatAll("[ELO] Map or Challenge not recognised, ELO isn't counted.");
     }
 }
 
@@ -266,23 +271,23 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
     if (RetryAmt >= 2)   // max 2 retries per map, which means in total 3 tries.
     {
         PrintToServer("[ELO:event] Calculating map failed score");
-        PrintToChatAll("[ELO:event] You have failed to complete the map.");
+        PrintToChatAll("[ELO] You have failed to complete the map.");
         UpdatePlayerElos(false);
         // TODO: type players' lost elo in chat, change to a random map after 8 seconds or so.
         RetryAmt = 0;
     }
     else 
     {
-        PrintToChatAll("[ELO:event] Fail count: %d", 1 + RetryAmt);
-        PrintToChatAll("[ELO:event] Tries left: %d", 2 - RetryAmt);
+        PrintToChatAll("[ELO] Fail count: %d", 1 + RetryAmt);
+        PrintToChatAll("[ELO] Tries left: %d", 2 - RetryAmt);
     }
     return Plugin_Continue;
 }
 
 public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
 {
-    PrintToServer("[ELO:event] Calculating map success score");
-    PrintToChatAll("[ELO:event] You have succeeded in completing the map.");
+    PrintToServer("[ELO] Calculating map success score");
+    PrintToChatAll("[ELO] You have succeeded in completing the map.");
     UpdatePlayerElos(true);
     // TODO: type players' gained elo in chat, change to a random map after 8 seconds or so.
     RetryAmt = 0;
@@ -291,8 +296,10 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 
 public void UpdatePlayerElos(bool success)
 {
+    new String:nick[64];
     for (new i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) {
+        if (IsClientInGame(i) && !IsFakeClient(i) && GetClientName(i, nick, sizeof(nick))) {
+            PrintToChatAll("[ELO] %s's ELO %d -> %d", nick, PlayerELOs[i], UpdateElo(i, success));
             UpdateElo(i, success);
         }
     }    
@@ -302,10 +309,10 @@ public void UpdatePlayerElos(bool success)
 public void UpdateElo(int client, bool success)
 {
     // TODO: jh needs to make this work
-    // int elo = calculatePlayerElo(client, success);
+    int elo = calculatePlayerElo(client, success);
 
     // XXX: debug to test it's working
-    int elo = GetRandomInt(0, 666);
+    // int elo = GetRandomInt(0, 666);
     int steamid = GetSteamAccountID(client);
 
     PrintToServer("[ELO:db] writing to DB");
@@ -356,6 +363,6 @@ public int calculatePlayerElo(int client, bool success)
             NewELO = CurrentELO - (CurrentELO / AverageGroupELO) * LoseTotalELO;
         }
     }
-
+    PrintToServer("[RD:Elo] Average Group ELO = %f", AverageGroupELO);
     return RoundFloat(NewELO);
 }
