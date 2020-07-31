@@ -235,6 +235,16 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
         else {
             MapECE = 1600;  // any map has 1600 when DB is off, for testing purposes
         }
+        if (oldDifficulty < 3) {
+            PrintToChatAll("[ELO] Normal and Easy difficulties are not supported. Play harder marine!");
+            MapECE = 0;
+        }
+        else if (oldDifficulty == 3) {
+            MapECE = RoundFloat(MapECE * 0.65);
+        }
+        else if (oldDifficulty == 4) {
+            MapECE = RoundFloat(MapECE * 0.8);
+        }
     }
     return Plugin_Continue;
 }
@@ -296,11 +306,11 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 
 public void UpdatePlayerElos(bool success)
 {
-    new String:nick[64];
     for (new i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i) && GetClientName(i, nick, sizeof(nick))) {
-            PrintToChatAll("[ELO] %s's ELO %d -> %d", nick, PlayerELOs[i], UpdateElo(i, success));
+        if (IsClientInGame(i) && !IsFakeClient(i)) {
+            PrintToChat(i, "[ELO] Old ELO: %d", PlayerELOs[i]);
             UpdateElo(i, success);
+            PrintToChat(i, "[ELO] New ELO: %d", PlayerELOs[i]);
         }
     }    
 }
