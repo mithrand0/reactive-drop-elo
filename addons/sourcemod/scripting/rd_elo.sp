@@ -25,6 +25,8 @@ public Plugin myinfo =
     version =       VERSION
 };
 
+/* don't punish players for restarting mission when in lobby or restarting without completing a single objective & in first 30 seconds of gameplaystart */
+bool MissionFailed = false;
 int MapECE = 0;
 char currentMap[256];
 ConVar currentChallenge;
@@ -34,6 +36,7 @@ char oldChallenge[128];
 int PlayerCount = -1;
 int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
+int RetryAmt = 0;
 float AverageGroupELO = 0.0;
 
 
@@ -45,7 +48,7 @@ new String:test_events[][] = {
     "asw_mission_restart",
     "difficulty_changed",
     "mission_success",
-    "mission_failed",
+    "mission_failed"
 };
  
 public void OnPluginStart()
@@ -83,6 +86,7 @@ public void OnPluginStart()
     HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
     HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
     HookEvent("difficulty_changed", Event_DifficultyChanged, EventHookMode_Pre);
+    HookEvent("asw_mission_restart", Event_OnMissionRestart, EventHookMode_Pre);
 
     PrintToServer("[ELO:debug] hooking test events");
     bool eventHookLoaded;
@@ -229,14 +233,6 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
         );
 
         hDatabase.Query(FetchMapECE, query);
-        if (MapECE > 0) 
-        {
-            PrintToChatAll("[RD:ELO] Current map ECE: %d", MapECE);
-        }
-        else
-        {
-            PrintToChatAll("[RD:ELO] Map or Challenge not recognised, ELO isn't counted.");
-        }
     }
     return Plugin_Continue;
 }
@@ -245,6 +241,23 @@ public void FetchMapECE(Database db, DBResultSet results, const char[] error, an
 {
     // by default, we have no reward
     MapECE = FetchResult(db, results, error);
+    if (MapECE > 0) 
+    {
+        PrintToChatAll("[RD:ELO] Current map ECE: %d", MapECE);
+    }
+    else
+    {
+        PrintToChatAll("[RD:ELO] Map or Challenge not recognised, ELO isn't counted.");
+    }
+}
+
+public Action Event_OnMissionRestart(Event event, const char[] name, bool dontBroadcast)
+{
+    if (MissionFailed) {
+        RetryAmt++;
+    }
+    MissionFailed = false;
+    return Plugin_Continue;
 }
 
 /************************************/
@@ -252,15 +265,30 @@ public void FetchMapECE(Database db, DBResultSet results, const char[] error, an
 /************************************/
 public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
 {
-    PrintToServer("[ELO:event] Calculating map failed score");
-    UpdatePlayerElos(false);
+    MissionFailed = true;
+    if (RetryAmt >= 2)   // max 2 retries per map, which means in total 3 tries.
+    {
+        PrintToServer("[ELO:event] Calculating map failed score");
+        PrintToChatAll("[ELO:event] You have failed to complete the map.");
+        UpdatePlayerElos(false);
+        // TODO: type players' lost elo in chat, change to a random map after 8 seconds or so.
+        RetryAmt = 0;
+    }
+    else 
+    {
+        PrintToChatAll("[ELO:event] Fail count: %d", 1 + RetryAmt);
+        PrintToChatAll("[ELO:event] Tries left: %d", 2 - RetryAmt);
+    }
     return Plugin_Continue;
 }
 
 public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
 {
     PrintToServer("[ELO:event] Calculating map success score");
+    PrintToChatAll("[ELO:event] You have succeeded in completing the map.");
     UpdatePlayerElos(true);
+    // TODO: type players' gained elo in chat, change to a random map after 8 seconds or so.
+    RetryAmt = 0;
     return Plugin_Continue;
 }
 
