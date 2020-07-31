@@ -33,7 +33,6 @@ ConVar currentChallenge;
 ConVar currentDifficulty;
 int oldDifficulty;
 char oldChallenge[128];
-int PlayerCount = -1;
 int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
 int RetryAmt = 0;
@@ -199,8 +198,7 @@ public void OnMapStart()
         }
     }
 
-    PlayerCount = players;
-    AverageGroupELO = (TotalELO + 0.0) / PlayerCount;
+    AverageGroupELO = (TotalELO + 0.0) / players;
 
     // fetch current map
     GetCurrentMap(currentMap, sizeof(currentMap));
@@ -228,7 +226,6 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
             sizeof(query), 
             "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
             currentMap,
-            oldDifficulty,
             newChallenge
         );
 
@@ -255,8 +252,8 @@ public Action Event_OnMissionRestart(Event event, const char[] name, bool dontBr
 {
     if (MissionFailed) {
         RetryAmt++;
+        MissionFailed = false;
     }
-    MissionFailed = false;
     return Plugin_Continue;
 }
 
