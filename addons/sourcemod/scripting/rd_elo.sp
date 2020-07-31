@@ -1,7 +1,6 @@
 /*
     SourceMod RD Matchmaking & ELO
     Copyright (C) 2020 jhheight
-
     This program is private software. You are not allowed to use, modify, copy
     reverse engineer, duplicate or distribute it in any way without the explicit
     permission of the owner.
@@ -36,7 +35,7 @@ char oldChallenge[128];
 int PlayerELOs[MAXPLAYERS+1];
 int TotalELO = 0;
 int RetryAmt = 0;
-float AverageGroupELO = 0.0;
+int AverageGroupELO = 0;
 
 
 bool enableDb = true;
@@ -47,7 +46,8 @@ new String:test_events[][] = {
     "asw_mission_restart",
     "difficulty_changed",
     "mission_success",
-    "mission_failed"
+    "mission_failed",
+    "game_start"
 };
  
 public void OnPluginStart()
@@ -198,7 +198,8 @@ public void OnMapStart()
     }
     PrintToServer("[RD:Elo] TotalELO = %d", TotalELO);
     PrintToServer("[RD:Elo] players = %d", players);
-    AverageGroupELO = (TotalELO + 0.0) / players;
+    AverageGroupELO = RoundFloat((TotalELO + 0.0) / players);
+    PrintToServer("[RD:Elo] Average Group ELO = %d", AverageGroupELO);
 
     // fetch current map
     GetCurrentMap(currentMap, sizeof(currentMap));
@@ -243,7 +244,17 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
             MapECE = RoundFloat(MapECE * 0.65);
         }
         else if (oldDifficulty == 4) {
-            MapECE = RoundFloat(MapECE * 0.8);
+            MapECE = RoundFloat(MapECE * 0.85);
+        }
+        if (!enableDb) {
+            if (MapECE > 0) 
+            {
+                PrintToChatAll("[ELO] Current map ECE: %d", MapECE);
+            }
+            else
+            {
+                PrintToChatAll("[ELO] Map or Challenge not recognised, ELO isn't counted.");
+            }
         }
     }
     return Plugin_Continue;
@@ -355,7 +366,7 @@ public int calculatePlayerElo(int client, bool success)
 
     if (success)    // if the team succeeded in completing the map
     {
-        float GainTotalELO = (MapECE - AverageGroupELO + 600) / 10;
+        float GainTotalELO = (MapECE - AverageGroupELO + 600) / 10 + 0.0;
         if (GainTotalELO <= 4)
         {
             NewELO = CurrentELO + 1.0;
@@ -367,12 +378,11 @@ public int calculatePlayerElo(int client, bool success)
     }
     else    // if the team did not succeed
     {
-        float LoseTotalELO = (AverageGroupELO - MapECE + 600) / 10;
+        float LoseTotalELO = (AverageGroupELO - MapECE + 600) / 10 + 0.0;
         if (LoseTotalELO > 0)
         {
             NewELO = CurrentELO - (CurrentELO / AverageGroupELO) * LoseTotalELO;
         }
     }
-    PrintToServer("[RD:Elo] Average Group ELO = %f", AverageGroupELO);
     return RoundFloat(NewELO);
 }
