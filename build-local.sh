@@ -4,7 +4,11 @@ set -e
 msg="$*"
 mkdir -p /tmp/artifacts
 bin/buildscript.sh --push --testing
-docker stop $(docker ps -q 2>/dev/null) || true
+
+CONTAINER_ID=$(docker ps -q 2>/dev/null)
+if [[ "$CONTAINER_ID" != "" ]]; then
+    docker stop $CONTAINER_ID
+fi
 
 docker run -d mithrand0/reactive-drop-elo:testing
 CONTAINER_ID=$(docker ps -lq)
