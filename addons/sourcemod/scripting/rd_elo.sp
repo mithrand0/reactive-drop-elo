@@ -27,7 +27,7 @@ public Plugin myinfo =
 /* don't punish players for restarting mission when in lobby or restarting without completing a single objective & in first 30 seconds of gameplaystart */
 bool MissionFailed = false;
 int MapECE = 0;
-char currentMap[256];
+char desiredMap[256];   // this is the name of the map that will be on the server, can't change it externally no matter what
 ConVar currentChallenge;
 ConVar currentDifficulty;
 int oldDifficulty;
@@ -70,7 +70,7 @@ public void OnPluginStart()
     currentDifficulty = FindConVar("asw_skill");
     oldDifficulty = currentDifficulty.IntValue;
     currentChallenge.GetString(oldChallenge, sizeof(oldChallenge)); 
-
+    GetCurrentMap(desiredMap, sizeof(desiredMap));
     // init clients
     PrintToServer("[ELO:init] iterating players");
     for (new i = 1; i <= MaxClients; i++)
@@ -186,8 +186,13 @@ public void OnMapStart()
 {
     PrintToServer("[ELO:event] starting map");
     // fetch current map
+    char currentMap[256];
     GetCurrentMap(currentMap, sizeof(currentMap));
-
+    if (strcmp(currentMap, desiredMap, true))
+    {
+        ForceChangeLevel(desiredMap, "Map has been illegally changed.");
+        PrintToServer("[RD:event] desiredMap = %s", desiredMap);
+    }
     PrintToServer("[RD:event] map: %s", currentMap);
 }
 
@@ -195,9 +200,6 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
 {
     char newChallenge[128];
     currentChallenge.GetString(newChallenge, sizeof(newChallenge));
-    // DEBUG: (currently should be working though)
-    // PrintToServer("[RD:event] oldChallenge: %s", oldChallenge);
-    // PrintToServer("[RD:event] oldDifficulty: %d", oldDifficulty);
     if (oldDifficulty != currentDifficulty.IntValue || strcmp(oldChallenge, newChallenge, true) != 0)    // for some reason when you press the challenge button this event is fired twice instantly, this IF should prevent that spam
     {
         PrintToServer("[RD:event] challenge: %s", newChallenge);
@@ -211,7 +213,7 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
                 query,
                 sizeof(query), 
                 "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", 
-                currentMap,
+                desiredMap,
                 newChallenge
             );
 
@@ -221,7 +223,7 @@ public Action Event_DifficultyChanged(Event event, const char[] name, bool dontB
             MapECE = 1600;  // any map has 1600 when DB is off, for testing purposes
         }
         if (oldDifficulty < 3) {
-            PrintToChatAll("[ELO] Normal and Easy difficulties are not supported. Play harder marine!");
+            PrintToChatAll("[ELO] Normal and Easy difficulties are not supported. Play harder marine! You will still lose ELO.");
             MapECE = 0;
         }
         else if (oldDifficulty == 3) {
@@ -280,6 +282,7 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
         UpdatePlayerElos(false);
         // TODO: type players' lost elo in chat, change to a random map after 8 seconds or so.
         RetryAmt = 0;
+        
     }
     else 
     {
@@ -319,11 +322,38 @@ public void UpdatePlayerElos(bool success)
             // DataPack PACK_OldEloInfo;
             // CreateDataTimer(5.0, OldEloInfoPrint, PACK_OldEloInfo);
             // PACK_OldEloInfo.WriteFloat(i + 0.0);
+            // decl String:SteamName[64];
+            // GetClientName(i, SteamName, sizeof(SteamName));
+            // PrintToChatAll("[ELO] %s's old ELO: %d", SteamName, PlayerELOs[i]);
             PrintToChat(i, "[ELO] Old ELO: %d", PlayerELOs[i]);
             UpdateElo(i, success);
             PrintToChat(i, "[ELO] New ELO: %d", PlayerELOs[i]);
+            // PrintToChatAll("[ELO] %s's new ELO: %d", SteamName, PlayerELOs[i]);
+            // PrintToChatAll("/////");
         }
-    }    
+    }
+    if (enableDb) {
+        char query[256];
+        FormatEx(
+            query,
+            sizeof(query), 
+            "select map_name from map_scores where challenge = '%s' and elo < %d ORDER BY RAND() LIMIT 1", 
+            desiredMap,
+            oldChallenge
+        );
+        hDatabase.Query(MapChange, query);
+    }
+    else {
+        GetCurrentMap(desiredMap, sizeof(desiredMap));
+        // ForceChangeLevel(desiredMap, "yes");
+    }
+}
+
+public void MapChange(Database db, DBResultSet results, const char[] error, any data)
+{
+    // TODO: mithrand needs to fix this ;)
+    // desiredMap = FetchResult(db, results, error);
+    ForceChangeLevel(desiredMap, "Changing to next random map");    // issue: this is crashing people
 }
 
 public Action:OldEloInfoPrint(Handle timer, DataPack PACK_OldEloInfo)
@@ -337,7 +367,7 @@ public Action:OldEloInfoPrint(Handle timer, DataPack PACK_OldEloInfo)
  // elo calculator
 public void UpdateElo(int client, bool success)
 {
-    // TODO: jh needs to make this work
+    // jh made this work
     int elo = calculatePlayerElo(client, success);
 
     // XXX: debug to test it's working
