@@ -203,7 +203,7 @@ public void OnMapStart()
     currentChallenge.GetString(challenge, sizeof(challenge));
 
     // if no challege, challenge will be 0
-    if (StrEqual(challenge, "")) {
+    if (StrEqual(challenge, "0")) {
         challenge = "";
     }
 
