@@ -18,7 +18,7 @@
 public Plugin myinfo =
 {
     name =          "AS:RD ELO",
-    author =        "jhheight, Mithrand",
+    author =        "Mithrand, jhheight",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
     version =       VERSION
@@ -30,7 +30,7 @@ public Plugin myinfo =
 #define UNINITIALIZED -1
 #define UNKNOWN 0
 #define DEFAULT_ELO 1000
-#define RESTART_GRACE_TIME 30
+#define RESTART_GRACE_TIME 1
 #define MAP_MAX_ATTEMPTS 3
 #define RAGE_DELAY 1
 
@@ -95,7 +95,6 @@ public void OnPluginStart()
     
     // hook into events
     HookEvent("marine_selected", Event_OnMarineSelected);
-    HookEvent("player_fully_joined", Event_OnPlayerFullyJoined);
     HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
     HookEvent("asw_mission_restart", Event_OnMapFailure, EventHookMode_Pre);
     HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
@@ -161,28 +160,8 @@ public bool isValidPlayer(client)
   */
 public void OnClientConnected(int client)
 {
-    playerFailedCounter[client] = 0;
-    playerMarines[client] = UNINITIALIZED;
-
-    if (IsClientConnected(client) && !IsFakeClient(client)) {
-        // db
-        int steamid = GetSteamAccountID(client);
-        if (steamid) {
-            char query[256];
-            FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-            PrintToServer("[ELO] %s", query);
-            DBResultSet results = SQL_Query(db, query);
-
-            int elo = DEFAULT_ELO;
-            while (SQL_FetchRow(results)) {
-                elo = SQL_FetchInt(results, 0);
-            }
-
-            delete results;
-            playerElo[client] = elo;
-
-            PrintToServer("[ELO] %L: %d elo", client, elo);
-        }
+    if (playerFailedCounter[client] < 1) {
+        playerFailedCounter[client] = 0;
     }
 }
 
@@ -190,9 +169,9 @@ public void OnClientConnected(int client)
   * If a client disconnects, free the slot */
 public void OnClientDisconnect(client)
 {
-    playerElo[client] = UNINITIALIZED;
-    playerFailedCounter[client] = UNKNOWN;
-    playerMarines[client] = UNKNOWN;
+    // playerElo[client] = UNINITIALIZED;
+    // playerFailedCounter[client] = UNKNOWN;
+    // playerMarines[client] = UNKNOWN;
 }
 
 /*****************************
@@ -260,33 +239,46 @@ public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const 
     OnMapStart();
 }
 
-public Action Event_OnPlayerFullyJoined(Event event, const char[] name, bool dontBroadcast)
-{
-    PrintToServer("[ELO] marine joined");
-    int userid = event.GetInt("userid");
-    int client = GetClientOfUserId(userid);
-
-    PrintToChatAll("[ELO] %N has %d elo", client, playerElo[client]);
-    
-    return Plugin_Continue;
-}
-
 public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
 {
     PrintToServer("[ELO] marine selected");
     int marines = event.GetInt("count");
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
+    
 
     PrintToServer("[ELO] %L has selected %d marines", client, marines);
-
+    TypeElo(client);
     // assign marine slot
     playerMarines[client] = marines;
 
-    // refire connect event
-    OnClientConnected(client);
-
     return Plugin_Continue;
+}
+
+public void TypeElo(int client)
+{
+    playerMarines[client] = UNINITIALIZED;
+    if (IsClientConnected(client) && !IsFakeClient(client)) {
+        // db
+        int steamid = GetSteamAccountID(client);
+        if (steamid) {
+            char query[256];
+            FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+            PrintToServer("[ELO] %s", query);
+            DBResultSet results = SQL_Query(db, query);
+
+            int elo = DEFAULT_ELO;
+            while (SQL_FetchRow(results)) {
+                elo = SQL_FetchInt(results, 0);
+            }
+
+            delete results;
+            playerElo[client] = elo;
+
+            PrintToServer("[ELO] %L: %d elo", client, elo);
+            PrintToChatAll("[ELO] %N has %d elo", client, elo);
+        }
+    }
 }
 
 public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
@@ -314,7 +306,7 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
                 }
 
                 // award elo penalty to player
-                if (playerFailedCounter[i] > MAP_MAX_ATTEMPTS) {
+                if (playerFailedCounter[i] >= MAP_MAX_ATTEMPTS) {
                     PrintToServer("[ELO] %L awarded elo penalty", i);
                     updatePlayerElo(i, groupElo, false);
                     playerFailedCounter[i] = 0;
@@ -322,12 +314,20 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
             }
         }
     }
-
-    if (missionFailedCounter > MAP_MAX_ATTEMPTS) {
-        changeRandomMap();
+    if (missionFailedCounter >= MAP_MAX_ATTEMPTS) {
+        CreateTimer(0.1, changeRandomMap);
+        missionFailedCounter = 0;
         return Plugin_Handled;
     }
+    CreateTimer(0.1, restartMission);
+    return Plugin_Continue;
+}
 
+public Action restartMission(Handle timer)
+{
+    char command[32];
+    FormatEx(command, sizeof(command), "asw_restart_mission");
+    ServerCommand(command);
     return Plugin_Continue;
 }
 
@@ -349,7 +349,7 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
         }
     }
 
-    changeRandomMap();
+    CreateTimer(0.1, changeRandomMap);
 
     return Plugin_Handled;
 }
@@ -359,7 +359,7 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 /*****************************
  * Change level
  ****************************/
-public Action changeRandomMap()
+public Action changeRandomMap(Handle timer)
 {
     // fetch current map and challenge
     char map[256];
@@ -421,20 +421,17 @@ public int calculateGroupElo()
     return RoundFloat(totalElo / players + 0.0);
 }
 
-public Action updatePlayerElo(int client, int groupElo, bool success)
+public void updatePlayerElo(int client, int groupElo, bool success)
 {
     // calculate new elo
     int elo = calculateElo(client, groupElo, success);
-
     // write it to db
     if (elo > UNKNOWN) {
         int steamid = GetSteamAccountID(client);
         char query[1024];
         FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, elo) values (%d, %d)", steamid, elo);
-        SQL_Query(db, query);
+        db.Query(dbQuery, query, client);
     }
-
-    return Plugin_Continue;
 }
 
 
@@ -443,9 +440,8 @@ public int calculateElo(int client, int groupElo, bool success)
 {
     int currentElo = playerElo[client];
     float elo = currentElo + 0.0;
-
     // do not calculate if client is uninitialized
-    if (playerElo[client] == UNINITIALIZED) {
+    if (currentElo == UNINITIALIZED) {
         // reconnect the client
         OnClientConnected(client);
     } else if (ece != UNINITIALIZED) {
