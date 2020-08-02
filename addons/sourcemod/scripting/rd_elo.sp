@@ -31,7 +31,8 @@ public Plugin myinfo =
 #define UNKNOWN 0
 #define DEFAULT_ELO 1000
 #define RESTART_GRACE_TIME 30
-#define RESTART_MAX_NUM 2
+#define MAP_MAX_ATTEMPTS 3
+#define RAGE_DELAY 1
 
 // difficulties
 #define DIFFICULTY_NOTSET 0
@@ -93,10 +94,10 @@ public void OnPluginStart()
     aswVoteFraction.SetFloat(2.0);
     
     // hook into events
-    HookEvent("marine_selected", Event_OnMarineSelected, EventHookMode_Pre);
-    HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
-    HookEvent("asw_mission_restart", Event_OnMapFailure, EventHookMode_Pre);
-    HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
+    HookEvent("marine_selected", Event_OnMarineSelected);
+    HookEvent("mission_success", Event_OnMapSuccess);
+    HookEvent("asw_mission_restart", Event_OnMapFailure);
+    HookEvent("mission_failed", Event_OnMapFailure);
 
     // init clients
     initializeClients();
@@ -161,7 +162,10 @@ public bool isValidPlayer(client)
 public void initializeClients()
 {
     for (new i = 1; i <= MaxClients; i++) {
-        OnClientPutInServer(i);
+        // only initialize if nothing is set
+        if (playerElo[i] == null) {
+            OnClientConnected(i);
+        }
     }
 
     PrintToServer("[ELO] clients initialized");
@@ -171,7 +175,7 @@ public void initializeClients()
   * When a client connects, reset the slot with default data. This also
   * fetches ELO rating from the database.
   */
-public void OnClientPutInServer(int client)
+public void OnClientConnected(int client)
 {
     playerFailedCounter[client] = 0;
     playerMarines[client] = UNINITIALIZED;
@@ -276,8 +280,9 @@ public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const 
 public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
 {
     PrintToServer("[ELO] marine selected");
-    int client = event.GetInt("userid");
     int marines = event.GetInt("count");
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
 
     PrintToServer("[ELO] %L has selected %d marines", client, marines);
 
@@ -285,8 +290,7 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
     playerMarines[client] = marines;
 
     // refire connect event
-    OnClientPutInServer(client);
-
+    OnClientConnected(client);
 
     return Plugin_Continue;
 }
@@ -297,11 +301,15 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
     int groupElo = calculateGroupElo();
 
     // if failure was repeated within grace time, don't count
-    int currentTime = RoundFloat(GetGameTime());
-    if (missionFailedTimestamp == UNINITIALIZED || currentTime > missionFailedTimestamp + RESTART_GRACE_TIME) {
+    int currentTime = RoundFloat(GetEngineTime());
+
+    PrintToServer("[ELO] current %d, previous %d", currentTime, missionFailedTimestamp);
+    if (currentTime > missionFailedTimestamp) {
         
         // raise fail scores
         missionFailedCounter++;
+        missionFailedTimestamp = currentTime + RESTART_GRACE_TIME;
+
         for (new i = 1; i <= MaxClients; i++) {
             if (isValidPlayer(i)) {
                 // raise fail counters
@@ -312,7 +320,8 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
                 }
 
                 // award elo penalty to player
-                if (playerFailedCounter[i] > RESTART_MAX_NUM) {
+                if (playerFailedCounter[i] > MAP_MAX_ATTEMPTS) {
+                    PrintToServer("[ELO] %L awarded elo penalty", i);
                     updatePlayerElo(i, groupElo, false);
                     playerFailedCounter[i] = 0;
                 }
@@ -320,13 +329,6 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
         }
     }
 
-    // award team failure as well
-    missionFailedTimestamp = currentTime;
-    missionFailedCounter++;
-
-    PrintToServer("[ELO] failed map try %d", missionFailedCounter);
-
-    // TODO calculate team elo
     return Plugin_Continue;
 }
 
@@ -404,7 +406,7 @@ public int calculateElo(int client, int groupElo, bool success)
     // do not calculate if client is uninitialized
     if (playerElo[client] == UNINITIALIZED) {
         // reconnect the client
-        OnClientPutInServer(client);
+        OnClientConnected(client);
     } else if (ece != UNINITIALIZED) {
         // success
         if (success == true) {
