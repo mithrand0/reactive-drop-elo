@@ -95,9 +95,9 @@ public void OnPluginStart()
     
     // hook into events
     HookEvent("marine_selected", Event_OnMarineSelected);
-    HookEvent("mission_success", Event_OnMapSuccess);
-    HookEvent("asw_mission_restart", Event_OnMapFailure);
-    HookEvent("mission_failed", Event_OnMapFailure);
+    HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
+    HookEvent("asw_mission_restart", Event_OnMapFailure, EventHookMode_Pre);
+    HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
 
     // log
     PrintToServer("[ELO] initialized");
@@ -312,6 +312,11 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
         }
     }
 
+    if (missionFailedCounter > MAP_MAX_ATTEMPTS) {
+        changeRandomMap();
+        return Plugin_Handled;
+    }
+
     return Plugin_Continue;
 }
 
@@ -331,6 +336,46 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
             // award elo
             updatePlayerElo(i, groupElo, true);
         }
+    }
+
+    changeRandomMap();
+
+    return Plugin_Handled;
+}
+
+
+
+/*****************************
+ * Change level
+ ****************************/
+public Action changeRandomMap()
+{
+    // fetch current map and challenge
+    char map[256];
+    GetCurrentMap(map, sizeof(map));
+
+    char challenge[256];
+    currentChallenge.GetString(challenge, sizeof(challenge));
+
+    // if no challege, challenge will be 0
+    if (StrEqual(challenge, "0")) {
+        challenge = "";
+    }
+
+    // fetch a random map
+    char query[256];
+    FormatEx(query, sizeof(query), "SELECT map_name FROM map_score WHERE map_name != '%s' and challenge = '%s' order by rand() limit 1", map, challenge);
+    PrintToServer("[ELO] %s", query);
+    DBResultSet results = SQL_Query(db, query);
+
+    while (SQL_FetchRow(results)) {
+        char newMap[128];
+        SQL_FetchString(results, 0, newMap, sizeof(newMap));
+
+        char command[192];
+        FormatEx(command, sizeof(command), "changelevel %s", newMap);
+        ServerCommand(command);
+        return Plugin_Handled;
     }
 
     return Plugin_Continue;
