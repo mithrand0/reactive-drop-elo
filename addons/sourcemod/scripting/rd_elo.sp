@@ -99,9 +99,6 @@ public void OnPluginStart()
     HookEvent("asw_mission_restart", Event_OnMapFailure);
     HookEvent("mission_failed", Event_OnMapFailure);
 
-    // init clients
-    initializeClients();
-
     // log
     PrintToServer("[ELO] initialized");
 }
@@ -155,20 +152,6 @@ public void dbQuery(Database handle, DBResultSet results, const char[] error, an
 public bool isValidPlayer(client)
 {
     return IsClientConnected(client) && IsClientInGame(client) && !IsFakeClient(client) && playerMarines[client] > 0;
-}
-
-/**
-  * (re)initialize all clients */
-public void initializeClients()
-{
-    for (new i = 1; i <= MaxClients; i++) {
-        // only initialize if nothing is set
-        if (playerElo[i] == null) {
-            OnClientConnected(i);
-        }
-    }
-
-    PrintToServer("[ELO] clients initialized");
 }
 
 /**
