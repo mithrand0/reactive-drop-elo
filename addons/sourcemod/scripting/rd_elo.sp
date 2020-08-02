@@ -97,6 +97,9 @@ public void OnPluginStart()
     HookEvent("asw_mission_restart", event_OnMapFailure, EventHookMode_Pre);
     HookEvent("marine_selected", event_OnMarineSelected, EventHookMode_Pre);
     HookEvent("difficulty_changed", event_OnDifficultyChanged, EventHookMode_Pre);
+
+    // log
+    PrintToServer("[ELO] initialized");
 }
 
 /*****************************
@@ -108,7 +111,6 @@ public void OnPluginStart()
   */
 public Action connectDb()
 {
-    PrintToServer("[ELO:DB] connecting to database..");
     char dbError[256];
     db = SQL_Connect("elo", true, dbError, sizeof(dbError));
     if (db == null) {
@@ -124,14 +126,14 @@ public Action connectDb()
 
 public bool isValidPlayer(client)
 {
-    return IsClientInGame(client) && !IsFakeClient(client) && playerMarines[client] > 0;
+    return IsClientConnected(client) && IsClientInGame(client) && !IsFakeClient(client) && playerMarines[client] > 0;
 }
 
 /**
   * (re)initialize all clients */
 public void initializeClients()
 {
-    for (new i = 0; i <= MaxClients; i++) {
+    for (new i = 1; i <= MaxClients; i++) {
         OnClientConnected(i);
     }
 }
@@ -145,17 +147,23 @@ public void OnClientConnected(int client)
     playerFailedCounter[client] = 0;
     playerMarines[client] = UNINITIALIZED;
 
-    // db
-    int steamid = GetSteamAccountID(client);
-    char query[256];
-    FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-    DBResultSet results = SQL_Query(db, query);
+    if (isValidPlayer(client)) {
+        // db
+        int steamid = GetSteamAccountID(client);
+        char query[256];
+        FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+        DBResultSet results = SQL_Query(db, query);
 
-    while (SQL_FetchRow(results)) {
-        playerMarines[client] = SQL_FetchInt(results, 0);
+        int elo = DEFAULT_ELO;
+        while (SQL_FetchRow(results)) {
+            elo = SQL_FetchInt(results, 0);
+        }
+
+        delete results;
+        playerElo[client] = elo;
+
+        PrintToServer("[ELO] %L received: %d elo", client, elo);
     }
-
-    delete results;
 }
 
 /**
@@ -244,7 +252,7 @@ public Action event_OnMapFailure(Event event, const char[] name, bool dontBroadc
         
         // raise fail scores
         missionFailedCounter++;
-        for (new i = 0; i <= MAXPLAYERS; i++) {
+        for (new i = 1; i <= MaxClients; i++) {
             if (isValidPlayer(i)) {
                 // raise fail counters
                 if (playerFailedCounter[i] < 1) {
@@ -278,7 +286,7 @@ public Action event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
     // group elo
     int groupElo = calculateGroupElo();
 
-    for (new i = 0; i <= MAXPLAYERS; i++) {
+    for (new i = 1; i <= MaxClients; i++) {
         if (isValidPlayer(i)) {
             playerFailedCounter[i] = 0;
 
@@ -297,13 +305,23 @@ public Action event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 public int calculateGroupElo()
 {
     int totalElo = 0;
+    int totalSpectatorElo = 0;
     int players = 0;
+    int spectators = 0;
 
-    for (new i = 0; i <= MAXPLAYERS; i++) {
+    for (new i = 1; i <= MaxClients; i++) {
         if (isValidPlayer(i)) {
             totalElo += playerElo[i];
             players++;
         }
+        totalSpectatorElo += playerElo[i];
+        spectators++;
+    }
+
+    // they all went afk
+    if (players == UNKNOWN) {
+        players = spectators;
+        totalElo = totalSpectatorElo;
     }
 
     return RoundFloat(totalElo / players + 0.0);
