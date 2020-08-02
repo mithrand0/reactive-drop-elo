@@ -30,7 +30,7 @@ public Plugin myinfo =
 #define UNINITIALIZED -1
 #define UNKNOWN 0
 #define DEFAULT_ELO 1000
-#define RESTART_GRACE_TIME 10
+#define RESTART_GRACE_TIME 30
 #define RESTART_MAX_NUM 2
 
 // difficulties
@@ -86,17 +86,17 @@ public void OnPluginStart()
     aswVoteFraction = FindConVar("asw_vote_map_fraction");
 
     // convar hooks
-    HookConVarChange(currentChallenge, event_OnSettingsChanged);
-    HookConVarChange(currentDifficulty, event_OnSettingsChanged);
+    HookConVarChange(currentChallenge, Event_OnSettingsChanged);
+    HookConVarChange(currentDifficulty, Event_OnSettingsChanged);
 
     // disable map voting
     aswVoteFraction.SetFloat(2.0);
     
     // hook into events
-    HookEvent("mission_success", event_OnMapSuccess, EventHookMode_Pre);
-    HookEvent("mission_failed", event_OnMapFailure, EventHookMode_Pre);
-    HookEvent("asw_mission_restart", event_OnMapFailure, EventHookMode_Pre);
-    HookEventEx("marine_selected", event_OnMarineSelected, EventHookMode_Pre);
+    HookEvent("marine_selected", Event_OnMarineSelected, EventHookMode_Pre);
+    HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
+    HookEvent("asw_mission_restart", Event_OnMapFailure, EventHookMode_Pre);
+    HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
 
     // init clients
     initializeClients();
@@ -161,7 +161,7 @@ public bool isValidPlayer(client)
 public void initializeClients()
 {
     for (new i = 1; i <= MaxClients; i++) {
-        OnClientConnected(i);
+        OnClientPutInServer(i);
     }
 
     PrintToServer("[ELO] clients initialized");
@@ -171,7 +171,7 @@ public void initializeClients()
   * When a client connects, reset the slot with default data. This also
   * fetches ELO rating from the database.
   */
-public void OnClientConnected(int client)
+public void OnClientPutInServer(int client)
 {
     playerFailedCounter[client] = 0;
     playerMarines[client] = UNINITIALIZED;
@@ -179,21 +179,23 @@ public void OnClientConnected(int client)
     if (IsClientConnected(client) && !IsFakeClient(client)) {
         // db
         int steamid = GetSteamAccountID(client);
-        char query[256];
-        FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-        PrintToServer("[ELO] %s", query);
-        DBResultSet results = SQL_Query(db, query);
+        if (steamid) {
+            char query[256];
+            FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+            PrintToServer("[ELO] %s", query);
+            DBResultSet results = SQL_Query(db, query);
 
-        int elo = DEFAULT_ELO;
-        while (SQL_FetchRow(results)) {
-            elo = SQL_FetchInt(results, 0);
+            int elo = DEFAULT_ELO;
+            while (SQL_FetchRow(results)) {
+                elo = SQL_FetchInt(results, 0);
+            }
+
+            delete results;
+            playerElo[client] = elo;
+
+            PrintToServer("[ELO] %L: %d elo", client, elo);
+            PrintToChatAll("[ELO] %N has %d elo", client, elo);
         }
-
-        delete results;
-        playerElo[client] = elo;
-
-        PrintToServer("[ELO] %L: %d elo", client, elo);
-        PrintToChatAll("[ELO] %N has %d elo", client, elo);
     }
 }
 
@@ -263,7 +265,7 @@ public void OnMapStart()
  * Events
  ****************************/
 
-public void event_OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
     PrintToServer("[ELO] settings have changed");
     
@@ -271,8 +273,9 @@ public void event_OnSettingsChanged(ConVar convar, const char[] oldValue, const 
     OnMapStart();
 }
 
-public Action event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
 {
+    PrintToServer("[ELO] marine selected");
     int client = event.GetInt("userid");
     int marines = event.GetInt("count");
 
@@ -282,20 +285,20 @@ public Action event_OnMarineSelected(Event event, const char[] name, bool dontBr
     playerMarines[client] = marines;
 
     // refire connect event
-    OnClientConnected(client);
+    OnClientPutInServer(client);
 
 
     return Plugin_Continue;
 }
 
-public Action event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
 {
     // group elo
     int groupElo = calculateGroupElo();
 
     // if failure was repeated within grace time, don't count
     int currentTime = RoundFloat(GetGameTime());
-    if (missionFailedTimestamp != UNINITIALIZED && currentTime > missionFailedTimestamp + RESTART_GRACE_TIME) {
+    if (missionFailedTimestamp == UNINITIALIZED || currentTime > missionFailedTimestamp + RESTART_GRACE_TIME) {
         
         // raise fail scores
         missionFailedCounter++;
@@ -318,13 +321,16 @@ public Action event_OnMapFailure(Event event, const char[] name, bool dontBroadc
     }
 
     // award team failure as well
+    missionFailedTimestamp = currentTime;
     missionFailedCounter++;
+
+    PrintToServer("[ELO] failed map try %d", missionFailedCounter);
 
     // TODO calculate team elo
     return Plugin_Continue;
 }
 
-public Action event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
 {
     // reset fail retries
     missionFailedCounter = 0;
@@ -398,7 +404,7 @@ public int calculateElo(int client, int groupElo, bool success)
     // do not calculate if client is uninitialized
     if (playerElo[client] == UNINITIALIZED) {
         // reconnect the client
-        OnClientConnected(client);
+        OnClientPutInServer(client);
     } else if (ece != UNINITIALIZED) {
         // success
         if (success == true) {
