@@ -18,7 +18,7 @@
 public Plugin myinfo =
 {
     name =          "AS:RD ELO",
-    author =        "Mithrand, jhheight",
+    author =        "jhheight, Mithrand",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
     version =       VERSION
@@ -95,6 +95,7 @@ public void OnPluginStart()
     
     // hook into events
     HookEvent("marine_selected", Event_OnMarineSelected);
+    HookEvent("player_fully_joined", Event_OnPlayerFullyJoined);
     HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
     HookEvent("asw_mission_restart", Event_OnMapFailure, EventHookMode_Pre);
     HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
@@ -181,7 +182,6 @@ public void OnClientConnected(int client)
             playerElo[client] = elo;
 
             PrintToServer("[ELO] %L: %d elo", client, elo);
-            PrintToChatAll("[ELO] %N has %d elo", client, elo);
         }
     }
 }
@@ -258,6 +258,17 @@ public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const 
     
     // relay to map start
     OnMapStart();
+}
+
+public Action Event_OnPlayerFullyJoined(Event event, const char[] name, bool dontBroadcast)
+{
+    PrintToServer("[ELO] marine joined");
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
+
+    PrintToChatAll("[ELO] %N has %d elo", client, playerElo[client]);
+    
+    return Plugin_Continue;
 }
 
 public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
