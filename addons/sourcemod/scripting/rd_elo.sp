@@ -17,7 +17,7 @@
 /* Plugin Info */
 public Plugin myinfo =
 {
-    name =          "AS:RD ELO`",
+    name =          "AS:RD ELO",
     author =        "Mithrand, jhheight",
     description =   "ELO module for Reactive Drop",
     url =           "https://github.com/mithrand0",
@@ -92,14 +92,14 @@ public void OnPluginStart()
     // disable map voting
     aswVoteFraction.SetFloat(2.0);
     
-    // init clients
-    initializeClients();
-
     // hook into events
     HookEvent("mission_success", event_OnMapSuccess, EventHookMode_Pre);
     HookEvent("mission_failed", event_OnMapFailure, EventHookMode_Pre);
     HookEvent("asw_mission_restart", event_OnMapFailure, EventHookMode_Pre);
-    HookEvent("marine_selected", event_OnMarineSelected, EventHookMode_Pre);
+    HookEventEx("marine_selected", event_OnMarineSelected, EventHookMode_Pre);
+
+    // init clients
+    initializeClients();
 
     // log
     PrintToServer("[ELO] initialized");
@@ -123,7 +123,28 @@ public Action connectDb()
         PrintToServer("[ELO] connected to db");
     }
 
+    return createDbSchema();
+}
+
+public Action createDbSchema()
+{
+    char query[256];
+    
+    query = "create table if not exists map_score (map_name varchar(255) NOT NULL, challenge varchar(255) NOT NULL, score int(11) NOT NULL, PRIMARY KEY (map_name,challenge))";
+    SQL_Query(db, query);
+
+    query = "create table if not exists player_score (steamid bigint(20) NOT NULL, elo int(11) NOT NULL, PRIMARY KEY (steamid))";
+    SQL_Query(db, query);
+
     return Plugin_Continue;
+}
+
+public void dbQuery(Database handle, DBResultSet results, const char[] error, any data)
+{
+    if (!StrEqual(error, "")) {
+        PrintToServer("[ELO] db error: %s", error);
+    }
+    delete results;
 }
 
 /*****************************
@@ -155,11 +176,12 @@ public void OnClientConnected(int client)
     playerFailedCounter[client] = 0;
     playerMarines[client] = UNINITIALIZED;
 
-    if (isValidPlayer(client)) {
+    if (IsClientConnected(client) && !IsFakeClient(client)) {
         // db
         int steamid = GetSteamAccountID(client);
         char query[256];
         FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+        PrintToServer("[ELO] %s", query);
         DBResultSet results = SQL_Query(db, query);
 
         int elo = DEFAULT_ELO;
@@ -220,6 +242,7 @@ public void OnMapStart()
         
         if (difficulty < DIFFICULTY_HARD) {
             // disable for easy and normal
+            PrintToServer("[ELO] difficulty too low, disabling ece");
             mapEce = 0;
         } else if (difficulty == DIFFICULTY_HARD) {
             mapEce = RoundFloat(dbEce * 0.65);
@@ -253,13 +276,14 @@ public Action event_OnMarineSelected(Event event, const char[] name, bool dontBr
     int client = event.GetInt("userid");
     int marines = event.GetInt("count");
 
+    PrintToServer("[ELO] %L has selected %d marines", client, marines);
+
     // assign marine slot
     playerMarines[client] = marines;
 
     // refire connect event
     OnClientConnected(client);
 
-    PrintToServer("[ELO] %L has selected %d marines", client, marines);
 
     return Plugin_Continue;
 }
@@ -360,14 +384,11 @@ public void updatePlayerElo(int client, int groupElo, bool success)
         int steamid = GetSteamAccountID(client);
         char query[1024];
         FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, elo) values (%d, %d)", steamid, elo);
-        db.Query(updatePlayerEloDB, query, client);
+        db.Query(dbQuery, query, client);
     }
 }
 
-public void updatePlayerEloDB(Database handle, DBResultSet results, const char[] error, any data)
-{
-    delete results;
-}
+
 
 public int calculateElo(int client, int groupElo, bool success) 
 {
