@@ -85,6 +85,10 @@ public void OnPluginStart()
     currentDifficulty = FindConVar("asw_skill");
     aswVoteFraction = FindConVar("asw_vote_map_fraction");
 
+    // convar hooks
+    HookConVarChange(currentChallenge, event_OnSettingsChanged);
+    HookConVarChange(currentDifficulty, event_OnSettingsChanged);
+
     // disable map voting
     aswVoteFraction.SetFloat(2.0);
     
@@ -96,7 +100,6 @@ public void OnPluginStart()
     HookEvent("mission_failed", event_OnMapFailure, EventHookMode_Pre);
     HookEvent("asw_mission_restart", event_OnMapFailure, EventHookMode_Pre);
     HookEvent("marine_selected", event_OnMarineSelected, EventHookMode_Pre);
-    HookEvent("difficulty_changed", event_OnDifficultyChanged, EventHookMode_Pre);
 
     // log
     PrintToServer("[ELO] initialized");
@@ -116,7 +119,10 @@ public Action connectDb()
     if (db == null) {
         PrintToServer("[ELO] connect error: %s, disabling plugin..", dbError);
         return Plugin_Stop;
+    } else {
+        PrintToServer("[ELO] connected to db");
     }
+
     return Plugin_Continue;
 }
 
@@ -136,6 +142,8 @@ public void initializeClients()
     for (new i = 1; i <= MaxClients; i++) {
         OnClientConnected(i);
     }
+
+    PrintToServer("[ELO] clients initialized");
 }
 
 /**
@@ -162,7 +170,8 @@ public void OnClientConnected(int client)
         delete results;
         playerElo[client] = elo;
 
-        PrintToServer("[ELO] %L received: %d elo", client, elo);
+        PrintToServer("[ELO] %L: %d elo", client, elo);
+        PrintToChatAll("[ELO] %N has %d elo", client, elo);
     }
 }
 
@@ -193,11 +202,17 @@ public void OnMapStart()
     char challenge[256];
     currentChallenge.GetString(challenge, sizeof(challenge));
 
+    // if no challege, challenge will be 0
+    if (StrEqual(challenge, "")) {
+        challenge = "";
+    }
+
     // fetch map elo from db
     char query[256];
     FormatEx(query, sizeof(query), "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", map, challenge);
     DBResultSet results = SQL_Query(db, query);
 
+    PrintToServer("[ELO] query: %s", query);
     while (SQL_FetchRow(results)) {
         // params
         int dbEce = SQL_FetchInt(results, 0);
@@ -217,18 +232,20 @@ public void OnMapStart()
 
     ece = mapEce;
     delete results;
+
+    PrintToServer("[ELO] calculated map ece %d", ece);
 }
 
 /*****************************
  * Events
  ****************************/
 
-public Action event_OnDifficultyChanged(Event event, const char[] name, bool dontBroadcast)
+public void event_OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
+    PrintToServer("[ELO] settings have changed");
+    
     // relay to map start
     OnMapStart();
-
-    return Plugin_Continue;
 }
 
 public Action event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
@@ -236,7 +253,13 @@ public Action event_OnMarineSelected(Event event, const char[] name, bool dontBr
     int client = event.GetInt("userid");
     int marines = event.GetInt("count");
 
+    // assign marine slot
     playerMarines[client] = marines;
+
+    // refire connect event
+    OnClientConnected(client);
+
+    PrintToServer("[ELO] %L has selected %d marines", client, marines);
 
     return Plugin_Continue;
 }
