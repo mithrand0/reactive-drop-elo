@@ -410,7 +410,7 @@ public int calculateGroupElo()
     return RoundFloat(totalElo / players + 0.0);
 }
 
-public void updatePlayerElo(int client, int groupElo, bool success)
+public Action updatePlayerElo(int client, int groupElo, bool success)
 {
     // calculate new elo
     int elo = calculateElo(client, groupElo, success);
@@ -420,8 +420,10 @@ public void updatePlayerElo(int client, int groupElo, bool success)
         int steamid = GetSteamAccountID(client);
         char query[1024];
         FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, elo) values (%d, %d)", steamid, elo);
-        db.Query(dbQuery, query, client);
+        SQL_Query(db, query);
     }
+
+    return Plugin_Continue;
 }
 
 
