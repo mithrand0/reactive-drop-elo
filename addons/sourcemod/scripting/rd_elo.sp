@@ -29,8 +29,8 @@ public Plugin myinfo =
  ****************************/
 #define UNINITIALIZED -1
 #define UNKNOWN 0
-#define DEFAULT_ELO 1000
-#define RESTART_GRACE_TIME 1
+#define DEFAULT_ELO 1500
+#define RESTART_GRACE_TIME 5
 #define MAP_MAX_ATTEMPTS 3
 #define RAGE_DELAY 1
 
@@ -53,9 +53,6 @@ int missionFailedTimestamp = UNINITIALIZED;
 
 // round ece
 int ece = UNINITIALIZED;
-
-// player failure counter
-int playerFailedCounter[MAXPLAYERS+1];
 
 // some convars we need to check
 ConVar currentChallenge;
@@ -160,18 +157,33 @@ public bool isValidPlayer(client)
   */
 public void OnClientConnected(int client)
 {
-    if (playerFailedCounter[client] < 1) {
-        playerFailedCounter[client] = 0;
+    playerMarines[client] = UNINITIALIZED;
+    if (IsClientConnected(client) && !IsFakeClient(client)) {
+        // db
+        int steamid = GetSteamAccountID(client);
+        if (steamid) {
+            char query[256];
+            FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+            PrintToServer("[ELO] %s", query);
+            DBResultSet results = SQL_Query(db, query);
+
+            int elo = DEFAULT_ELO;
+            while (SQL_FetchRow(results)) {
+                elo = SQL_FetchInt(results, 0);
+            }
+            playerElo[client] = elo;
+            delete results;
+        }
     }
 }
 
 /**
   * If a client disconnects, free the slot */
+// THIS GETS EXECUTED EVERY TIME AFTER SWITCHING MAP EVEN ON MAP FAILURE
 public void OnClientDisconnect(client)
 {
-    // playerElo[client] = UNINITIALIZED;
-    // playerFailedCounter[client] = UNKNOWN;
-    // playerMarines[client] = UNKNOWN;
+    playerElo[client] = UNINITIALIZED;
+    playerMarines[client] = UNKNOWN;
 }
 
 /*****************************
@@ -251,34 +263,13 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
     TypeElo(client);
     // assign marine slot
     playerMarines[client] = marines;
-
     return Plugin_Continue;
 }
 
 public void TypeElo(int client)
 {
-    playerMarines[client] = UNINITIALIZED;
-    if (IsClientConnected(client) && !IsFakeClient(client)) {
-        // db
-        int steamid = GetSteamAccountID(client);
-        if (steamid) {
-            char query[256];
-            FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
-            PrintToServer("[ELO] %s", query);
-            DBResultSet results = SQL_Query(db, query);
-
-            int elo = DEFAULT_ELO;
-            while (SQL_FetchRow(results)) {
-                elo = SQL_FetchInt(results, 0);
-            }
-
-            delete results;
-            playerElo[client] = elo;
-
-            PrintToServer("[ELO] %L: %d elo", client, elo);
-            PrintToChatAll("[ELO] %N has %d elo", client, elo);
-        }
-    }
+    PrintToServer("[ELO] %L: %d elo", client, playerElo[client]);
+    PrintToChatAll("[ELO] %N has %d elo", client, playerElo[client]);
 }
 
 public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
@@ -295,38 +286,29 @@ public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadc
         // raise fail scores
         missionFailedCounter++;
         missionFailedTimestamp = currentTime + RESTART_GRACE_TIME;
-
-        for (new i = 1; i <= MaxClients; i++) {
-            if (isValidPlayer(i)) {
-                // raise fail counters
-                if (playerFailedCounter[i] < 1) {
-                    playerFailedCounter[i] = 1;
-                } else {
-                    playerFailedCounter[i]++;
-                }
-
-                // award elo penalty to player
-                if (playerFailedCounter[i] >= MAP_MAX_ATTEMPTS) {
+        if (missionFailedCounter >= MAP_MAX_ATTEMPTS) {
+            for (new i = 1; i <= MaxClients; i++) {
+                if (isValidPlayer(i)) {
+                    // award elo penalty for player
                     PrintToServer("[ELO] %L awarded elo penalty", i);
                     updatePlayerElo(i, groupElo, false);
-                    playerFailedCounter[i] = 0;
                 }
             }
+            missionFailedCounter = 0;
+            CreateTimer(0.5, changeRandomMap);
+            return Plugin_Handled;
         }
     }
-    if (missionFailedCounter >= MAP_MAX_ATTEMPTS) {
-        CreateTimer(0.1, changeRandomMap);
-        missionFailedCounter = 0;
-        return Plugin_Handled;
-    }
-    CreateTimer(0.1, restartMission);
+    CreateTimer(0.5, restartMission);
     return Plugin_Continue;
 }
 
 public Action restartMission(Handle timer)
 {
-    char command[32];
-    FormatEx(command, sizeof(command), "asw_restart_mission");
+    char currentMap[128];
+    GetCurrentMap(currentMap, sizeof(currentMap));
+    char command[192];
+    FormatEx(command, sizeof(command), "changelevel %s", currentMap);
     ServerCommand(command);
     return Plugin_Continue;
 }
@@ -342,14 +324,13 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 
     for (new i = 1; i <= MaxClients; i++) {
         if (isValidPlayer(i)) {
-            playerFailedCounter[i] = 0;
 
             // award elo
             updatePlayerElo(i, groupElo, true);
         }
     }
 
-    CreateTimer(0.1, changeRandomMap);
+    CreateTimer(0.5, changeRandomMap);
 
     return Plugin_Handled;
 }
