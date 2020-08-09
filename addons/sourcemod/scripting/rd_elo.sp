@@ -426,6 +426,7 @@ public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadca
         bool mapChange = false;
 
         // iterate players
+        teamRetries = 0;
         for (new i = 1; i <= MaxClients; i++) {            
             if (isValidPlayer(i)) {
                 
