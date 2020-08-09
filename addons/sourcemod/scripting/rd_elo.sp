@@ -250,7 +250,7 @@ public void OnMapStart()
     FormatEx(query, sizeof(query), "SELECT score, retry_limit FROM map_score WHERE map_name = '%s' and challenge = '%s'", mapName, challenge);
     DBResultSet results = SQL_Query(db, query);
 
-    PrintToServer("[ELO] query: %s", query);
+    PrintToServer("[ELO:db] %s", query);
     while (SQL_FetchRow(results)) {
         // params
         int dbEce = SQL_FetchInt(results, 0);
@@ -259,7 +259,6 @@ public void OnMapStart()
         
         if (difficulty < DIFFICULTY_HARD) {
             // disable for easy and normal
-            PrintToServer("[ELO] difficulty too low, disabling ece");
             mapEce = 0;
         } else if (difficulty == DIFFICULTY_HARD) {
             mapEce = RoundFloat(dbEce * 0.65);
@@ -280,8 +279,7 @@ public void OnMapStart()
         }
     }
 
-    PrintToServer("[ELO] calculated map ece %d", mapEce);
-    PrintToChatAll("[ELO] map reward is %d over %d tries", mapEce, mapRetries);
+    PrintToChatAll("[ELO] map ece is %d with %d tries", mapEce, mapRetries);
 }
 
 public void disableReadyOverride()
@@ -296,7 +294,6 @@ public void disableReadyOverride()
   */
 public void ShowPlayerElo(int client)
 {
-    PrintToServer("[ELO] %L has %d elo", client, playerElo[client]);
     CreateTimer(1.0, PrintPlayerElo, client);
 }
 
@@ -319,8 +316,6 @@ public Action PrintPlayerElo(Handle timer, int client) {
 
 public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-    PrintToServer("[ELO] settings have changed");
-    
     // relay to map start
     OnMapStart();
 }
@@ -340,9 +335,6 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
     int numMarines = event.GetInt("count");
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
-
-    // log
-    PrintToServer("[ELO] %L selected %d marines", client, numMarines);
 
     // re-fetch player's elo, in case it is unknown
     if (playerElo[client] == UNINITIALIZED || playerElo[client] == UNKNOWN) {
@@ -464,7 +456,7 @@ public Action changeRandomMap(Handle timer)
     // fetch a random map
     char query[256];
     FormatEx(query, sizeof(query), "SELECT map_name FROM map_score WHERE map_name != '%s' and challenge = '%s' order by rand() limit 1", map, challenge);
-    PrintToServer("[ELO] %s", query);
+    PrintToServer("[ELO:db] %s", query);
     DBResultSet results = SQL_Query(db, query);
 
     while (SQL_FetchRow(results)) {
@@ -517,7 +509,7 @@ public void updatePlayerRetry(int client)
 
     char query[512];
     FormatEx(query, sizeof(query), "UPDATE player_score set retry = %d, last_map = '%s' where steamid = %d", playerRetries[client], escapedMapName, playerSteamId[client]);
-    PrintToServer("[ELO] %s", query);
+    PrintToServer("[ELO:db] %s", query);
     db.Query(dbQuery, query, client);
 }
 
@@ -527,8 +519,6 @@ public void updatePlayerElo(int client, int groupElo, bool success)
     playerPrevElo[client] = playerElo[client];
     int elo = calculateElo(client, groupElo, success);
 
-    PrintToServer("[ELO] %L updating elo %d", client, elo);
-
     // write it to db
     if (elo > UNKNOWN) {
         // get some player information
@@ -537,7 +527,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
         // store elo
         char query[1024];
         FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo) values (%d, %d) ON DUPLICATE KEY UPDATE elo = %d, retry = 0, last_map = ''", steamid, elo, elo);
-        PrintToServer("[ELO] %s", query);
+        PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
 
         // if we can retrieve a name, update it
@@ -550,7 +540,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
             db.Escape(name, escapedName, sizeof(escapedName));
             
             FormatEx(query, sizeof(query), "UPDATE player_score set name = '%s' where steamid = %d", escapedName, steamid);
-            PrintToServer("[ELO] %s", query);
+            PrintToServer("[ELO:db] %s", query);
             db.Query(dbQuery, query, client);
         }
 
