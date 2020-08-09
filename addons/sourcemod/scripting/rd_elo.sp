@@ -12,7 +12,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define VERSION "0.0.1"
+#define VERSION "0.9.4"
 
 /* Plugin Info */
 public Plugin myinfo =
