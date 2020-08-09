@@ -536,7 +536,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
 
         // store elo
         char query[1024];
-        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo) values (%d, %d) ON DUPLICATE KEY UPDATE elo = %d, retry = 0", steamid, elo, elo);
+        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo) values (%d, %d) ON DUPLICATE KEY UPDATE elo = %d, retry = 0, last_map = ''", steamid, elo, elo);
         PrintToServer("[ELO] %s", query);
         db.Query(dbQuery, query, client);
 
