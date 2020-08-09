@@ -26,6 +26,14 @@ jobs:
       - store_artifacts:
           path: /tmp/artifacts
           destination: release
+      - run:
+          name: Trigger main build if on master
+          command: |
+            if [[ "$CIRCLE_BRANCH" = "master" ]]; then
+                sleep 10
+                ENDPOINT="https://circleci.com/api/v1.1/project/github/mithrand0/reactive-drop-docker/build"
+                curl -X POST "${ENDPOINT}?circle-token=${CIRCLE_API_USER_TOKEN}"
+            fi          
 
   publish-github-release:
     docker:
