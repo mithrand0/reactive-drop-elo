@@ -323,7 +323,7 @@ public void disableReadyOverride()
 public void ShowPlayerElo(int client)
 {
     CreateTimer(MAP_PRINT_DELAY + 0.2, PrintWelcomePlayer, client);
-    CreateTimer(MAP_PRINT_DELAY + 0.5, PrintPlayerElo, client);
+    CreateTimer(MAP_PRINT_DELAY + 1.0, PrintPlayerElo, client);
 }
 
 public Action PrintPlayerElo(Handle timer, int client)
@@ -337,7 +337,7 @@ public Action PrintPlayerElo(Handle timer, int client)
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
         if (playerRanking[client] == UNKNOWN) {
-            PrintToChatAll("[ELO] %N has no ranking and has been set to %d elo", client, elo);
+            PrintToChatAll("[ELO] %N has no ranking", client);
         } else {
             PrintToChatAll("[ELO] %N is ranked #%d and has %d elo", client, playerRanking[client], elo);
         }
