@@ -313,7 +313,7 @@ public void OnMapStart()
 public void disableReadyOverride()
 {
     if (readyOverride.IntValue > 0) {
-        // readyOverride.SetInt(0);
+        readyOverride.SetInt(0);
     }
 }
 
