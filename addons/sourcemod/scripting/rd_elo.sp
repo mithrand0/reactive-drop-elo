@@ -329,6 +329,10 @@ public Action PrintPlayerElo(Handle timer, int client) {
     int elo = playerElo[client];
     int prevElo = playerPrevElo[client];
 
+    if (elo == UNKNOWN || elo == UNINITIALIZED) {
+        elo = DEFAULT_ELO;
+    }
+
     if (prevElo == UNINITIALIZED || elo == prevElo) {
         if (playerRanking[client] == UNKNOWN) {
             PrintToChatAll("[ELO] %N has no ranking and has been set to %d elo", client, playerRanking[client], elo);
