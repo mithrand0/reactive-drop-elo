@@ -31,7 +31,7 @@ public Plugin myinfo =
 #define UNKNOWN 0
 #define DEFAULT_ELO 1500
 #define MAP_RESTART_DELAY 6
-#define MAP_PRINT_DELAY 1
+#define MAP_PRINT_DELAY 2
 #define MAP_MAX_RESTARTS 3
 
 // difficulties
@@ -53,11 +53,16 @@ int mapRetries = UNINITIALIZED;
 char mapName[128];
 bool mapStarted = false;
 
+// team
+int teamRetries = UNKNOWN;
+
 // some convars we need to check
 ConVar currentChallenge;
 ConVar currentDifficulty;
 ConVar aswVoteFraction;
 ConVar readyOverride;
+ConVar friendlyFireAbsorbtion;
+ConVar hordeOnslaught;
 
 // player scoreboard
 int playerElo[MAXPLAYERS+1];
@@ -65,6 +70,7 @@ int playerPrevElo[MAXPLAYERS+1];
 int playerActive[MAXPLAYERS+1];
 int playerSteamId[MAXPLAYERS+1];
 int playerRetries[MAXPLAYERS+1];
+int playerRanking[MAXPLAYERS+1];
 
 // database handle
 Database db;
@@ -84,6 +90,8 @@ public void OnPluginStart()
     currentDifficulty = FindConVar("asw_skill");
     aswVoteFraction = FindConVar("asw_vote_map_fraction");
     readyOverride = FindConVar("rd_ready_mark_override");
+    hordeOnslaught = FindConVar("asw_horde_override");
+    friendlyFireAbsorbtion = FindConVar("asw_marine_ff_absorption");
 
     // convar hooks
     disableReadyOverride();
@@ -91,6 +99,8 @@ public void OnPluginStart()
     HookConVarChange(currentChallenge, Event_OnSettingsChanged);
     HookConVarChange(currentDifficulty, Event_OnSettingsChanged);
     HookConVarChange(readyOverride, Event_OnSettingsChanged);
+    HookConVarChange(hordeOnslaught, Event_OnSettingsChanged);
+    HookConVarChange(friendlyFireAbsorbtion, Event_OnSettingsChanged);
 
     // disable map voting
     aswVoteFraction.SetFloat(2.0);
@@ -174,21 +184,24 @@ public void OnClientConnected(int client)
 
                 // fetch elo
                 char query[256];
-                FormatEx(query, sizeof(query), "SELECT elo, retry, last_map FROM player_score WHERE steamid = %d", steamid);
+                FormatEx(query, sizeof(query), "SELECT elo, retry, last_map, FIND_IN_SET(elo, (SELECT GROUP_CONCAT(elo ORDER BY elo DESC) FROM player_score)) FROM player_score WHERE steamid = %d", steamid);
                 PrintToServer("[ELO] %s", query);
                 DBResultSet results = SQL_Query(db, query);
 
                 int elo = DEFAULT_ELO;
                 int retry = UNKNOWN;
+                int rank = UNKNOWN;
                 char lastMap[128];
 
                 while (SQL_FetchRow(results)) {
                     elo = SQL_FetchInt(results, 0);
                     retry = SQL_FetchInt(results, 1);
+                    rank = SQL_FetchInt(results, 3);
                     SQL_FetchString(results, 2, lastMap, sizeof(lastMap));
                 }
                 playerElo[client] = elo;
                 playerPrevElo[client] = UNINITIALIZED;
+                playerRanking[client] = rank;
 
                 // if the last_map is the same as the current one, assign retry
                 if (StrEqual(lastMap, mapName)) {
@@ -210,7 +223,7 @@ public void OnClientConnected(int client)
 public void OnClientDisconnect(client)
 {
     // check if the player was playing
-    if (playerActive[client] > 0) {
+    if (playerActive[client] > 0 && mapStarted == true) {
         // player rq, award elo penalty
         int groupElo = calculateGroupElo();
         updatePlayerElo(client, groupElo, false);
@@ -223,6 +236,7 @@ public void OnClientDisconnect(client)
     playerPrevElo[client] = UNINITIALIZED;
     playerActive[client] = UNKNOWN;
     playerSteamId[client] = UNKNOWN;
+    playerRetries[client] = UNKNOWN;
 }
 
 /*****************************
@@ -234,52 +248,66 @@ public void OnClientDisconnect(client)
   */
 public void OnMapStart()
 {
-    // fetch current map and challenge
-    GetCurrentMap(mapName, sizeof(mapName));
+    // check if ff and onslaught are on
+    if (friendlyFireAbsorbtion.IntValue != 0) {
+        PrintToChatAll("[ELO] friendly fire needs to be enabled for ranked game");
+    } else if (hordeOnslaught.IntValue == 0) {
+        PrintToChatAll("[ELO] onslaught needs to be enabled for ranked game");
+    } else {
 
-    char challenge[256];
-    currentChallenge.GetString(challenge, sizeof(challenge));
+        // fetch current map and challenge
+        GetCurrentMap(mapName, sizeof(mapName));
 
-    // if no challege, challenge will be 0
-    if (StrEqual(challenge, "0")) {
-        challenge = "";
-    }
+        char challenge[256];
+        currentChallenge.GetString(challenge, sizeof(challenge));
 
-    // fetch map elo from db
-    char query[256];
-    FormatEx(query, sizeof(query), "SELECT score, retry_limit FROM map_score WHERE map_name = '%s' and challenge = '%s'", mapName, challenge);
-    DBResultSet results = SQL_Query(db, query);
+        // if no challege, challenge will be 0
+        if (StrEqual(challenge, "0")) {
+            challenge = "";
+        }
 
-    PrintToServer("[ELO:db] %s", query);
-    while (SQL_FetchRow(results)) {
-        // params
-        int dbEce = SQL_FetchInt(results, 0);
-        int difficulty = currentDifficulty.IntValue;
-        mapRetries = SQL_FetchInt(results, 1);
-        
-        if (difficulty < DIFFICULTY_HARD) {
-            // disable for easy and normal
-            mapEce = 0;
-        } else if (difficulty == DIFFICULTY_HARD) {
-            mapEce = RoundFloat(dbEce * 0.65);
-        } else if (difficulty == DIFFICULTY_INSANE) {
-            mapEce = RoundFloat(dbEce * 0.85);
-        } else if (difficulty == DIFFICULTY_BRUTAL) {
-            mapEce = dbEce;
+        // fetch map elo from db
+        char query[256];
+        FormatEx(query, sizeof(query), "SELECT score, retry_limit FROM map_score WHERE map_name = '%s' and challenge = '%s'", mapName, challenge);
+        DBResultSet results = SQL_Query(db, query);
+
+        PrintToServer("[ELO:db] %s", query);
+        while (SQL_FetchRow(results)) {
+            // params
+            int dbEce = SQL_FetchInt(results, 0);
+            int difficulty = currentDifficulty.IntValue;
+            mapRetries = SQL_FetchInt(results, 1);
+            
+            if (difficulty < DIFFICULTY_HARD) {
+                // disable for easy and normal
+                mapEce = 0;
+            } else if (difficulty == DIFFICULTY_HARD) {
+                mapEce = RoundFloat(dbEce * 0.65);
+            } else if (difficulty == DIFFICULTY_INSANE) {
+                mapEce = RoundFloat(dbEce * 0.85);
+            } else if (difficulty == DIFFICULTY_BRUTAL) {
+                mapEce = dbEce;
+            }
+        }
+
+        delete results;
+
+        if (mapEce) {
+            for (new i = 1; i < MaxClients; i++) {
+                if (isValidPlayer(i)) {
+                    ShowPlayerElo(i);
+                }
+            }
+
+            PrintToChatAll("[ELO] map ece is %d with %d tries", mapEce, mapRetries);
+        } else {
+            PrintToChatAll("[ELO] unsupported map, difficulty or challenge");
         }
     }
-
-    delete results;
 
     disableReadyOverride();
 
-    for (new i = 1; i < MaxClients; i++) {
-        if (isValidPlayer(i)) {
-            ShowPlayerElo(i);
-        }
-    }
 
-    PrintToChatAll("[ELO] map ece is %d with %d tries", mapEce, mapRetries);
 }
 
 public void disableReadyOverride()
@@ -302,7 +330,11 @@ public Action PrintPlayerElo(Handle timer, int client) {
     int prevElo = playerPrevElo[client];
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
-        PrintToChatAll("[ELO] %N has %d elo", client, elo);
+        if (playerRanking[client] == UNKNOWN) {
+            PrintToChatAll("[ELO] %N has no ranking and has been set to %d elo", client, playerRanking[client], elo);
+        } else {
+            PrintToChatAll("[ELO] %N is ranked #%d and has %d elo", client, playerRanking[client], elo);
+        }
     } else if (elo > prevElo) {
         PrintToChatAll("[ELO] %N has gained %d elo and has now %d", client, elo - prevElo, elo);
     } else {
@@ -324,6 +356,10 @@ public Action Event_OnPlayerJoined(Event event, const char[] name, bool dontBroa
 {
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
+    
+    if (!playerRanking[client]) {
+        OnClientConnected(client);
+    }
     ShowPlayerElo(client);
 }
 
@@ -356,7 +392,11 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
 public Action Event_OnMapRestart(Event event, const char[] name, bool dontBroadcast)
 {
     // relay to map failed
-    return Event_OnMapFailed(event, name, dontBroadcast);
+    if (mapStarted) {
+        return Event_OnMapFailed(event, name, dontBroadcast);
+    } else {
+        return Plugin_Continue;
+    }
 }
 
 public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadcast)
@@ -374,14 +414,13 @@ public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadca
             if (isValidPlayer(i)) {
                 
                 playerRetries[i]++;
+                if (playerRetries[i] > teamRetries) {
+                    teamRetries = playerRetries[i];
+                }
+
                 updatePlayerRetry(i);
 
-                CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnMapFailed, i);
-
                 if (playerRetries[i] >= mapRetries) {
-                    // if the player tried more than n times
-                    updatePlayerElo(i, groupElo, false);
-
                     // one player hit retry limit, probably whole lobby did
                     mapChange = true;
                 }
@@ -390,18 +429,30 @@ public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadca
 
         // change the map
         if (mapChange) {
-            CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnTeamFailed);
+            
+            // award elo penalty
+            for (new i = 1; i <= MaxClients; i++) { 
+                // award if player was active and tried more than one time
+                if (isValidPlayer(i) && playerRetries[i] > 1) {
+                    updatePlayerElo(i, groupElo, false);
+                }
+            }
+
+            CreateTimer(MAP_PRINT_DELAY - 0.2, Print_OnTeamFailed);
             CreateTimer(MAP_RESTART_DELAY + 0.0, changeRandomMap);
             return Plugin_Stop;
         }
+
+        // display retry count
+        CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnMapFailed);
     }
     
     return Plugin_Continue;
 }
 
-public Action Print_OnMapFailed(Handle timer, int client)
+public Action Print_OnMapFailed(Handle timer)
 {
-    PrintToChatAll("[ELO] mission failed, %N is at try %d of %d", client, playerRetries[client], MAP_MAX_RESTARTS);
+    PrintToChatAll("[ELO] mission failed, try %d of %d", teamRetries, mapRetries);
 }
 
 public Action Print_OnTeamFailed(Handle timer)
@@ -414,7 +465,7 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
     // group elo
     int groupElo = calculateGroupElo();
 
-    CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnMapSuccess);
+    CreateTimer(MAP_PRINT_DELAY - 0.2, Print_OnMapSuccess);
 
     for (new i = 1; i <= MaxClients; i++) {
         if (isValidPlayer(i)) {
