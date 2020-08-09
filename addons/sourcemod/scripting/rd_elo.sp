@@ -30,9 +30,9 @@ public Plugin myinfo =
 #define UNINITIALIZED -1
 #define UNKNOWN 0
 #define DEFAULT_ELO 1500
-#define RESTART_GRACE_TIME 5
-#define MAP_MAX_ATTEMPTS 1
-#define MAP_RESTART_DELAY 4
+#define MAP_RESTART_DELAY 6
+#define MAP_PRINT_DELAY 1
+#define MAP_MAX_RESTARTS 3
 
 // difficulties
 #define DIFFICULTY_NOTSET 0
@@ -47,12 +47,11 @@ public Plugin myinfo =
  * Global variables
  ****************************/
 
-// team failure counter
-int missionFailedCounter = 0;
-int missionFailedTimestamp = UNINITIALIZED;
-
 // mapece
-int ece = UNINITIALIZED;
+int mapEce = UNINITIALIZED;
+int mapRetries = UNINITIALIZED;
+char mapName[128];
+bool mapStarted = false;
 
 // some convars we need to check
 ConVar currentChallenge;
@@ -62,7 +61,10 @@ ConVar readyOverride;
 
 // player scoreboard
 int playerElo[MAXPLAYERS+1];
+int playerPrevElo[MAXPLAYERS+1];
 int playerActive[MAXPLAYERS+1];
+int playerSteamId[MAXPLAYERS+1];
+int playerRetries[MAXPLAYERS+1];
 
 // database handle
 Database db;
@@ -81,6 +83,7 @@ public void OnPluginStart()
     currentChallenge = FindConVar("rd_challenge");
     currentDifficulty = FindConVar("asw_skill");
     aswVoteFraction = FindConVar("asw_vote_map_fraction");
+    readyOverride = FindConVar("rd_ready_mark_override");
 
     // convar hooks
     disableReadyOverride();
@@ -94,9 +97,10 @@ public void OnPluginStart()
     
     // hook into events
     HookEvent("marine_selected", Event_OnMarineSelected);
+    HookEvent("player_fullyjoined", Event_OnPlayerJoined);
     HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
-    HookEvent("asw_mission_restart", Event_OnMapFailure, EventHookMode_Pre);
-    HookEvent("mission_failed", Event_OnMapFailure, EventHookMode_Pre);
+    HookEvent("mission_failed", Event_OnMapFailed, EventHookMode_Pre);
+    HookEvent("asw_mission_restart", Event_OnMapRestart, EventHookMode_Pre);
 
     // log
     PrintToServer("[ELO] initialized");
@@ -159,21 +163,38 @@ public bool isValidPlayer(client)
   */
 public void OnClientConnected(int client)
 {
-    if (playerElo[client] == UNKNOWN || playerElo[client] == UNINITIALIZED) {
+    if (playerElo[client] == UNKNOWN || playerElo[client] == UNINITIALIZED || !playerElo[client]) {
         if (IsClientConnected(client) && !IsFakeClient(client)) {
             // db
             int steamid = GetSteamAccountID(client);
+
             if (steamid) {
+                // store steam id
+                playerSteamId[client] = steamid;
+
+                // fetch elo
                 char query[256];
-                FormatEx(query, sizeof(query), "SELECT elo FROM player_score WHERE steamid = %d", steamid);
+                FormatEx(query, sizeof(query), "SELECT elo, retry, last_map FROM player_score WHERE steamid = %d", steamid);
                 PrintToServer("[ELO] %s", query);
                 DBResultSet results = SQL_Query(db, query);
 
                 int elo = DEFAULT_ELO;
+                int retry = UNKNOWN;
+                char lastMap[128];
+
                 while (SQL_FetchRow(results)) {
                     elo = SQL_FetchInt(results, 0);
+                    retry = SQL_FetchInt(results, 1);
+                    SQL_FetchString(results, 2, lastMap, sizeof(lastMap));
                 }
                 playerElo[client] = elo;
+                playerPrevElo[client] = UNINITIALIZED;
+
+                // if the last_map is the same as the current one, assign retry
+                if (StrEqual(lastMap, mapName)) {
+                    playerRetries[client] = retry;
+                }
+
                 delete results;
             }
         }
@@ -186,8 +207,10 @@ public void OnClientConnected(int client)
   * OnClientDisconnect is triggered on map change, use the _Post
   * variance to make sure the client is not coming back
   */
-public void OnClientDisconnect_Post(client)
+public void OnClientDisconnect(client)
 {
+    PrintToServer("[ELO] %L disconnected", client);
+
     // check if the player was playing
     if (playerActive[client] > 0) {
         // player rq, award elo penalty
@@ -197,7 +220,9 @@ public void OnClientDisconnect_Post(client)
 
     // erase the scoreboard, for the next client
     playerElo[client] = UNINITIALIZED;
+    playerPrevElo[client] = UNINITIALIZED;
     playerActive[client] = UNKNOWN;
+    playerSteamId[client] = UNKNOWN;
 }
 
 /*****************************
@@ -209,11 +234,8 @@ public void OnClientDisconnect_Post(client)
   */
 public void OnMapStart()
 {
-    int mapEce = UNINITIALIZED;
-
     // fetch current map and challenge
-    char map[256];
-    GetCurrentMap(map, sizeof(map));
+    GetCurrentMap(mapName, sizeof(mapName));
 
     char challenge[256];
     currentChallenge.GetString(challenge, sizeof(challenge));
@@ -225,7 +247,7 @@ public void OnMapStart()
 
     // fetch map elo from db
     char query[256];
-    FormatEx(query, sizeof(query), "SELECT score FROM map_score WHERE map_name = '%s' and challenge = '%s'", map, challenge);
+    FormatEx(query, sizeof(query), "SELECT score, retry_limit FROM map_score WHERE map_name = '%s' and challenge = '%s'", mapName, challenge);
     DBResultSet results = SQL_Query(db, query);
 
     PrintToServer("[ELO] query: %s", query);
@@ -233,6 +255,7 @@ public void OnMapStart()
         // params
         int dbEce = SQL_FetchInt(results, 0);
         int difficulty = currentDifficulty.IntValue;
+        mapRetries = SQL_FetchInt(results, 1);
         
         if (difficulty < DIFFICULTY_HARD) {
             // disable for easy and normal
@@ -247,18 +270,24 @@ public void OnMapStart()
         }
     }
 
-    ece = mapEce;
     delete results;
 
     disableReadyOverride();
 
-    PrintToServer("[ELO] calculated map ece %d", ece);
+    for (new i = 1; i < MaxClients; i++) {
+        if (isValidPlayer(i)) {
+            ShowPlayerElo(i);
+        }
+    }
+
+    PrintToServer("[ELO] calculated map ece %d", mapEce);
+    PrintToChatAll("[ELO] map reward is %d over %d tries", mapEce, mapRetries);
 }
 
 public void disableReadyOverride()
 {
     if (readyOverride.IntValue > 0) {
-        readyOverride.SetInt(0);
+        // readyOverride.SetInt(0);
     }
 }
 
@@ -268,11 +297,20 @@ public void disableReadyOverride()
 public void ShowPlayerElo(int client)
 {
     PrintToServer("[ELO] %L has %d elo", client, playerElo[client]);
-    CreateTimer(0.5, PrintPlayerElo, client);
+    CreateTimer(1.0, PrintPlayerElo, client);
 }
 
-public Action PrintPlayerElo(Handle Timer, int client) {
-    PrintToChatAll("[ELO] %N has %d elo", client, playerElo[client]);
+public Action PrintPlayerElo(Handle timer, int client) {
+    int elo = playerElo[client];
+    int prevElo = playerPrevElo[client];
+
+    if (prevElo == UNINITIALIZED || elo == prevElo) {
+        PrintToChatAll("[ELO] %N has %d elo", client, elo);
+    } else if (elo > prevElo) {
+        PrintToChatAll("[ELO] %N has gained %d elo and has now %d", client, elo - prevElo, elo);
+    } else {
+        PrintToChatAll("[ELO] %N has lost %d elo and has now %d", client, prevElo - elo, elo);
+    }
 }
 
 /*****************************
@@ -287,9 +325,18 @@ public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const 
     OnMapStart();
 }
 
+public Action Event_OnPlayerJoined(Event event, const char[] name, bool dontBroadcast)
+{
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
+    ShowPlayerElo(client);
+}
+
 public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
 {
     // this gets triggered after mission_start, or in game if a player joins
+    mapStarted = true;
+
     int numMarines = event.GetInt("count");
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
@@ -314,51 +361,68 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
     return Plugin_Continue;
 }
 
-public Action Event_OnMapFailure(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMapRestart(Event event, const char[] name, bool dontBroadcast)
+{
+    // relay to map failed
+    return Event_OnMapFailed(event, name, dontBroadcast);
+}
+
+public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadcast)
 {
     // group elo
     int groupElo = calculateGroupElo();
 
-    // if failure was repeated within grace time, don't count
-    int currentTime = RoundFloat(GetEngineTime());
+    if (mapStarted == true) {
+        // raise fail scores only once every map 
+        mapStarted = false;        
+        bool mapChange = false;
 
-    PrintToChatAll("[ELO] mission failed, awarding elo");
-    PrintToServer("[ELO] timestamp %d, previous timestamp %d", currentTime, missionFailedTimestamp);
-    if (currentTime > missionFailedTimestamp) {
-        
-        // raise fail scores
-        missionFailedCounter++;
-        missionFailedTimestamp = currentTime + RESTART_GRACE_TIME;
-        
-        if (missionFailedCounter >= MAP_MAX_ATTEMPTS) {
-            // we failed too often, award elo
-            missionFailedCounter = 0;
+        // iterate players
+        for (new i = 1; i <= MaxClients; i++) {            
+            if (isValidPlayer(i)) {
+                
+                playerRetries[i]++;
+                updatePlayerRetry(i);
 
-            // iterate players
-            for (new i = 1; i <= MaxClients; i++) {            
-                if (isValidPlayer(i)) {
+                CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnMapFailed, i);
+
+                if (playerRetries[i] >= mapRetries) {
+                    // if the player tried more than n times
                     updatePlayerElo(i, groupElo, false);
+
+                    // one player hit retry limit, probably whole lobby did
+                    mapChange = true;
                 }
             }
+        }
 
-            // change the map
+        // change the map
+        if (mapChange) {
+            CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnTeamFailed);
             CreateTimer(MAP_RESTART_DELAY + 0.0, changeRandomMap);
+            return Plugin_Stop;
         }
     }
-
+    
     return Plugin_Continue;
+}
+
+public Action Print_OnMapFailed(Handle timer, int client)
+{
+    PrintToChatAll("[ELO] mission failed, %N is at try %d of %d", client, playerRetries[client], MAP_MAX_RESTARTS);
+}
+
+public Action Print_OnTeamFailed(Handle timer)
+{
+    PrintToChatAll("[ELO] team failed too often, changing map..");
 }
 
 public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
 {
-    // reset fail retries
-    missionFailedCounter = 0;
-    missionFailedTimestamp = UNINITIALIZED;
-
     // group elo
     int groupElo = calculateGroupElo();
 
-    PrintToChatAll("[ELO] mission succeeded, awarding elo");
+    CreateTimer(MAP_PRINT_DELAY + 0.0, Print_OnMapSuccess);
 
     for (new i = 1; i <= MaxClients; i++) {
         if (isValidPlayer(i)) {
@@ -372,9 +436,13 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 
     CreateTimer(MAP_RESTART_DELAY + 0.0, changeRandomMap);
 
-    return Plugin_Handled;
+    return Plugin_Stop;
 }
 
+public Action Print_OnMapSuccess(Handle timer)
+{
+    PrintToChatAll("[ELO] mission succeeded, awarding elo to active players");
+}
 
 /*****************************
  * Change level
@@ -441,9 +509,22 @@ public int calculateGroupElo()
     return RoundFloat(totalElo / players + 0.0);
 }
 
+public void updatePlayerRetry(int client)
+{
+    // escape map name
+    char escapedMapName[256];
+    db.Escape(mapName, escapedMapName, sizeof(escapedMapName));
+
+    char query[512];
+    FormatEx(query, sizeof(query), "UPDATE player_score set retry = %d, last_map = '%s' where steamid = %d", playerRetries[client], escapedMapName, playerSteamId[client]);
+    PrintToServer("[ELO] %s", query);
+    db.Query(dbQuery, query, client);
+}
+
 public void updatePlayerElo(int client, int groupElo, bool success)
 {
     // calculate new elo
+    playerPrevElo[client] = playerElo[client];
     int elo = calculateElo(client, groupElo, success);
 
     PrintToServer("[ELO] %L updating elo %d", client, elo);
@@ -451,30 +532,43 @@ public void updatePlayerElo(int client, int groupElo, bool success)
     // write it to db
     if (elo > UNKNOWN) {
         // get some player information
-        int steamid = GetSteamAccountID(client);
+        int steamid = playerSteamId[client];
 
-        // store name
-        char name[255];
-        GetClientName(client, name, sizeof(name));
-
-        // escape it properly
-        int len = strlen(name) * 2 + 1;
-        char[] escapedName = new char[len];
-        db.Escape(name, escapedName, len);
-
+        // store elo
         char query[1024];
-        FormatEx(query, sizeof(query), "REPLACE INTO player_score (steamid, name, elo) values (%d, '%s', %d)", steamid, escapedName, elo);
+        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo) values (%d, %d) ON DUPLICATE KEY UPDATE elo = %d, retry = 0", steamid, elo, elo);
         PrintToServer("[ELO] %s", query);
         db.Query(dbQuery, query, client);
 
+        // if we can retrieve a name, update it
+        if (isValidPlayer(client)) {
+            char name[128];
+            GetClientName(client, name, sizeof(name));
+
+            // escape the player name properly
+            char escapedName[256];
+            db.Escape(name, escapedName, sizeof(escapedName));
+            
+            FormatEx(query, sizeof(query), "UPDATE player_score set name = '%s' where steamid = %d", escapedName, steamid);
+            PrintToServer("[ELO] %s", query);
+            db.Query(dbQuery, query, client);
+        }
+
+        playerElo[client] = elo;
         ShowPlayerElo(client);
     }
+
+    // reset the player slot
+    playerActive[client] = 0;
 }
 
-public int calculateElo(int client, int groupElo, bool success) 
+public int calculateElo(int client, int groupEloScore, bool success) 
 {
     int currentElo = playerElo[client];
+    float groupElo = groupEloScore + 0.0;
     float elo = currentElo + 0.0;
+    float ece = mapEce + 0.0;
+
     // do not calculate if client is uninitialized
     if (currentElo == UNINITIALIZED) {
         // reconnect the client
@@ -482,17 +576,17 @@ public int calculateElo(int client, int groupElo, bool success)
     } else if (ece != UNINITIALIZED) {
         // success
         if (success == true) {
-            float gain = (ece - groupElo + 600) / 10 + 0.0;
-            if (gain <= 4) {
-                elo = currentElo + 1.0;
+            float gain = (ece - groupElo + 600) / 10;
+            if (gain <= 4.0) {
+                elo = elo + 1.0;
             } else {
-                elo = currentElo + 1.0 / (currentElo / groupElo) * gain;
+                elo = elo + 1.0 / (elo / groupElo) * gain;
             }
         } else {
             // failure
-            float eloPenalty = (groupElo - ece + 600) / 10 + 0.0;
-            if (eloPenalty > 0) {
-                elo = currentElo - (currentElo / groupElo) * eloPenalty;
+            float eloPenalty = (groupElo - ece + 600) / 10;
+            if (eloPenalty > 0.0) {
+                elo = elo - (elo / groupElo) * eloPenalty;
             }
         }
     }
