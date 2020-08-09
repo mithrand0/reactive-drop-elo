@@ -209,13 +209,13 @@ public void OnClientConnected(int client)
   */
 public void OnClientDisconnect(client)
 {
-    PrintToServer("[ELO] %L disconnected", client);
-
     // check if the player was playing
     if (playerActive[client] > 0) {
         // player rq, award elo penalty
         int groupElo = calculateGroupElo();
         updatePlayerElo(client, groupElo, false);
+
+        PrintToChatAll("[ELO] %N did quit during active game, awarding elo penalty");
     }
 
     // erase the scoreboard, for the next client
