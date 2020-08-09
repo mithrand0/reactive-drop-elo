@@ -322,10 +322,12 @@ public void disableReadyOverride()
   */
 public void ShowPlayerElo(int client)
 {
-    CreateTimer(1.0, PrintPlayerElo, client);
+    CreateTimer(MAP_PRINT_DELAY + 0.2, PrintWelcomePlayer, client);
+    CreateTimer(MAP_PRINT_DELAY + 0.5, PrintPlayerElo, client);
 }
 
-public Action PrintPlayerElo(Handle timer, int client) {
+public Action PrintPlayerElo(Handle timer, int client)
+{
     int elo = playerElo[client];
     int prevElo = playerPrevElo[client];
 
@@ -335,7 +337,7 @@ public Action PrintPlayerElo(Handle timer, int client) {
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
         if (playerRanking[client] == UNKNOWN) {
-            PrintToChatAll("[ELO] %N has no ranking and has been set to %d elo", client, playerRanking[client], elo);
+            PrintToChatAll("[ELO] %N has no ranking and has been set to %d elo", client, elo);
         } else {
             PrintToChatAll("[ELO] %N is ranked #%d and has %d elo", client, playerRanking[client], elo);
         }
@@ -343,6 +345,16 @@ public Action PrintPlayerElo(Handle timer, int client) {
         PrintToChatAll("[ELO] %N has gained %d elo and has now %d", client, elo - prevElo, elo);
     } else {
         PrintToChatAll("[ELO] %N has lost %d elo and has now %d", client, prevElo - elo, elo);
+    }
+}
+
+public Action PrintWelcomePlayer(Handle timer, int client)
+{
+    int elo = playerElo[client]; 
+    int prevElo = playerElo[client];
+
+    if (prevElo == UNINITIALIZED || elo == prevElo) {
+        PrintToChat(client, "[ELO] welcome %N, you joined a ranked server, for non-casual competative play only.", client);
     }
 }
 
