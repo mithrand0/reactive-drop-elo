@@ -12,7 +12,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define VERSION "0.9.4"
+#define VERSION "0.9.5"
 
 /* Plugin Info */
 public Plugin myinfo =
@@ -598,7 +598,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
 
         // store elo
         char query[1024];
-        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo) values (%d, %d) ON DUPLICATE KEY UPDATE elo = %d, retry = 0, last_map = ''", steamid, elo, elo);
+        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo, version) values (%d, %d, '%s') ON DUPLICATE KEY UPDATE elo = %d, retry = 0, last_map = ''", steamid, elo, VERSION, elo);
         PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
 
