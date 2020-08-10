@@ -522,6 +522,9 @@ public Action changeRandomMap(Handle timer)
         challenge = "";
     }
 
+    // cleanup old shit
+    cleanRankings();
+
     // fetch a random map
     char query[256];
     FormatEx(query, sizeof(query), "SELECT map_name FROM map_score WHERE map_name != '%s' and challenge = '%s' order by rand() limit 1", map, challenge);
@@ -651,4 +654,9 @@ public int calculateElo(int client, int groupEloScore, bool success)
     }
 
     return RoundFloat(elo);
+}
+
+public void cleanRankings()
+{
+    db.Query(dbQuery, "UPDATE player_score set retry = 0, last_map = NULL where updated_at < date_sub(now(), interval 1 hour)");
 }
