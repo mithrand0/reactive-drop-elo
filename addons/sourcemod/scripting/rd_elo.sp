@@ -384,8 +384,15 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
         OnClientConnected(client);
     }
 
-    // use elo
-    if (numMarines == 1) {
+    if (numMarines == 0) {
+        // check if he dselected marine, aka asw_afk but played
+        if (playerActive[client] > numMarines && playerRetries[client] > 0) {
+            // asw afk award
+            int groupElo = calculateGroupElo();
+            updatePlayerElo(client, groupElo, false);
+            PrintToChatAll("[ELO] %N got awarded the asw_afk during game award", client);            
+        }
+    } else if (numMarines == 1) {
         // mark the player as playing
         playerActive[client] = numMarines;
 
@@ -515,6 +522,7 @@ public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroa
             // suicide, award this moron properly
             int groupElo = calculateGroupElo();
             updatePlayerElo(client, groupElo, false);
+            PrintToChatAll("[ELO] %N got awarded headless freak award");
             playerActive[client] = 0;
         } else {
             playerTeamkills[client]++;
@@ -523,6 +531,7 @@ public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroa
                 // hitman award
                 int groupElo = calculateGroupElo();
                 updatePlayerElo(client, groupElo, false);
+                PrintToChatAll("[ELO] %N got awarded the hitman award");
 
                 // restart counter
                 playerTeamkills[client] = UNKNOWN;
