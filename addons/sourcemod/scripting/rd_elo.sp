@@ -33,6 +33,7 @@ public Plugin myinfo =
 #define MAP_RESTART_DELAY 6
 #define MAP_PRINT_DELAY 2
 #define MAP_MAX_RESTARTS 3
+#define MAX_TEAMKILLS 2
 
 // difficulties
 #define DIFFICULTY_NOTSET 0
@@ -71,6 +72,7 @@ int playerActive[MAXPLAYERS+1];
 int playerSteamId[MAXPLAYERS+1];
 int playerRetries[MAXPLAYERS+1];
 int playerRanking[MAXPLAYERS+1];
+int playerTeamkills[MAXPLAYERS+1];
 
 // database handle
 Database db;
@@ -111,6 +113,7 @@ public void OnPluginStart()
     HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
     HookEvent("mission_failed", Event_OnMapFailed, EventHookMode_Pre);
     HookEvent("asw_mission_restart", Event_OnMapRestart, EventHookMode_Pre);
+    HookEvent("marine_hurt", Event_OnMarineDamage);
 
     // log
     PrintToServer("[ELO] initialized");
@@ -133,19 +136,6 @@ public Action connectDb()
     } else {
         PrintToServer("[ELO] connected to db");
     }
-
-    return createDbSchema();
-}
-
-public Action createDbSchema()
-{
-    char query[256];
-    
-    query = "create table if not exists map_score (map_name varchar(255) NOT NULL, challenge varchar(255) NOT NULL, score int(11) NOT NULL, PRIMARY KEY (map_name,challenge))";
-    SQL_Query(db, query);
-
-    query = "create table if not exists player_score (steamid bigint(20) NOT NULL, elo int(11) NOT NULL, PRIMARY KEY (steamid))";
-    SQL_Query(db, query);
 
     return Plugin_Continue;
 }
@@ -237,6 +227,7 @@ public void OnClientDisconnect(client)
     playerActive[client] = UNKNOWN;
     playerSteamId[client] = UNKNOWN;
     playerRetries[client] = UNKNOWN;
+    playerTeamkills[client] = UNKNOWN;
 }
 
 /*****************************
@@ -503,6 +494,40 @@ public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadc
 public Action Print_OnMapSuccess(Handle timer)
 {
     PrintToChatAll("[ELO] mission succeeded, awarding elo to active players");
+}
+
+public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroadcast)
+{
+    // find how much the marine is hurt
+    float health = event.GetFloat("health");
+    if (health == 0.0) {
+        // marine died
+
+        // find out who did this
+        int victim = event.GetInt("userid");
+        int attacker = event.GetInt("attacker");
+        int client = GetClientOfUserId(attacker);
+
+        // check who did this
+        if (victim == attacker) {
+            // suicide, award this moron properly
+            int groupElo = calculateGroupElo();
+            updatePlayerElo(client, groupElo, false);
+            playerActive[client] = 0;
+        } else {
+            playerTeamkills[client]++;
+
+            if (playerTeamkills[client] > MAX_TEAMKILLS)  {
+                // hitman award
+                int groupElo = calculateGroupElo();
+                updatePlayerElo(client, groupElo, false);
+
+                // restart counter
+                playerTeamkills[client] = UNKNOWN;
+                playerActive[client] = 0;
+            }
+        }        
+    }
 }
 
 /*****************************
