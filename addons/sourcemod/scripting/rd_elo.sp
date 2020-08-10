@@ -50,6 +50,7 @@ public Plugin myinfo =
 
 // mapece
 int mapEce = UNINITIALIZED;
+int mapId = UNINITIALIZED;
 int mapRetries = UNINITIALIZED;
 char mapName[128];
 bool mapStarted = false;
@@ -259,7 +260,7 @@ public void OnMapStart()
 
         // fetch map elo from db
         char query[256];
-        FormatEx(query, sizeof(query), "SELECT score, retry_limit FROM map_score WHERE map_name = '%s' and challenge = '%s'", mapName, challenge);
+        FormatEx(query, sizeof(query), "SELECT score, retry_limit, id FROM map_score WHERE map_name = '%s' and challenge = '%s'", mapName, challenge);
         DBResultSet results = SQL_Query(db, query);
 
         PrintToServer("[ELO:db] %s", query);
@@ -268,6 +269,7 @@ public void OnMapStart()
             int dbEce = SQL_FetchInt(results, 0);
             int difficulty = currentDifficulty.IntValue;
             mapRetries = SQL_FetchInt(results, 1);
+            mapId = SQL_FetchInt(results, 2);
             
             if (difficulty < DIFFICULTY_HARD) {
                 // disable for easy and normal
@@ -624,6 +626,12 @@ public void updatePlayerElo(int client, int groupElo, bool success)
         // store elo
         char query[1024];
         FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo, version) values (%d, %d, '%s') ON DUPLICATE KEY UPDATE elo = %d, retry = 0, last_map = ''", steamid, elo, VERSION, elo);
+        PrintToServer("[ELO:db] %s", query);
+        db.Query(dbQuery, query, client);
+
+        // store history
+        int gain = elo - playerPrevElo[client];
+        FormatEx(query, sizeof(query), "INSERT INTO player_history (steamid, elo, gain, map_challenge, difficulty) values (%d, %d, %d, %d, %d)", steamid, elo, gain, mapId, currentDifficulty.IntValue);
         PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
 
