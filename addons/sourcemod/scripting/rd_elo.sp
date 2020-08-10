@@ -692,4 +692,5 @@ public int calculateElo(int client, int groupEloScore, bool success)
 public void cleanRankings()
 {
     db.Query(dbQuery, "UPDATE player_score set retry = 0, last_map = NULL where updated_at < date_sub(now(), interval 1 hour)");
+    db.Query(dbQuery, "DELETE FROM player_history where updated_at < date_sub(now(), interval 2 week)");
 }
