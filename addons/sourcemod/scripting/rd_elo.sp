@@ -306,8 +306,6 @@ public void OnMapStart()
     }
 
     disableReadyOverride();
-
-
 }
 
 public void disableReadyOverride()
@@ -393,13 +391,16 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
         OnClientConnected(client);
     }
 
-    // display elo
-    if (numMarines > 0) {
+    // use elo
+    if (numMarines == 1) {
         // mark the player as playing
         playerActive[client] = numMarines;
 
         // display what flesh just joined
         ShowPlayerElo(client);
+    } else {
+        PrintToChatAll("[ELO] %N is using bots, disabling elo rankings", client);
+        mapStarted = false;
     }
 
     return Plugin_Continue;
