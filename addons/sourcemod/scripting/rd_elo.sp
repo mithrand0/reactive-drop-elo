@@ -67,32 +67,32 @@ ConVar friendlyFireAbsorbtion;
 ConVar hordeOnslaught;
 
 // player scoreboard
-playerElo[MAXPLAYERS+1];
-playerPrevElo[MAXPLAYERS+1];
-playerActive[MAXPLAYERS+1];
-playerSteamId[MAXPLAYERS+1];
-playerRanking[MAXPLAYERS+1];
+int playerElo[MAXPLAYERS+1];
+int playerPrevElo[MAXPLAYERS+1];
+int playerActive[MAXPLAYERS+1];
+int playerSteamId[MAXPLAYERS+1];
+int playerRanking[MAXPLAYERS+1];
 
 // player bonusses
-playerRetries[MAXPLAYERS+1];   // elo penalty after 3rd (asbi 4th) retry, or 10% additional loss immediately on ragequit
-playerTeamKills[MAXPLAYERS+1]; // elo penalty after > 2 team kills per mission or 10% additional loss immediately on ragequit
-playerAlienDamageTaken[MAXPLAYERS+1]; // negative bonus if damage > 100 (0.2x elo x damage taken)
-playerTeamDamageDone[MAXPLAYERS+1]; // negative bonus if damage > 200 (0.1x elo x damage done)
-playerSuicide[MAXPLAYERS+1];  // exclusion from mission success elo when no kills/heals bonus achieved. 10% additional loss after 3rd retry.
-playerTeamHeals[MAXPLAYERS+1]; // individual bonus on top of map ece with maximum at 100
-playerAlienKills[MAXPLAYERS+1]; // max bonus at 100
-playerTeamInfestedCures[MAXPLAYERS+1]; // bonus cured marines * 10
-playerFastReloadExpert[MAXPLAYERS+1];  // one time +10 after 5th fast reload
-playerAchievementEarned[MAXPLAYERS+1]; // +10 for every achievement (does this trigger is already achieved?)
-playerBeaconsPlaced[MAXPLAYERS+1]; // +2 for every deployment (heal/amplify)
-playerAmmoDeployments[MAXPLAYERS+1]; // see above, ammo
-playerDied[MAXPLAYERS+1]; // incicates the player died
-playerRageQuit[MAXPLAYERS+1]; // player has rage quit
+int playerRetries[MAXPLAYERS+1];   // elo penalty after 3rd (asbi 4th) retry, or 10% additional loss immediately on ragequit
+int playerTeamKills[MAXPLAYERS+1]; // elo penalty after > 2 team kills per mission or 10% additional loss immediately on ragequit
+int playerAlienDamageTaken[MAXPLAYERS+1]; // negative bonus if damage > 100 (0.2x elo x damage taken)
+int playerTeamDamageDone[MAXPLAYERS+1]; // negative bonus if damage > 200 (0.1x elo x damage done)
+int playerSuicide[MAXPLAYERS+1];  // exclusion from mission success elo when no kills/heals bonus achieved. 10% additional loss after 3rd retry.
+int playerTeamHeals[MAXPLAYERS+1]; // individual bonus on top of map ece with maximum at 100
+int playerAlienKills[MAXPLAYERS+1]; // max bonus at 100
+int playerTeamInfestedCures[MAXPLAYERS+1]; // bonus cured marines * 10
+int playerFastReloadExpert[MAXPLAYERS+1];  // one time +10 after 5th fast reload
+int playerAchievementEarned[MAXPLAYERS+1]; // +10 for every achievement (does this trigger is already achieved?)
+int playerBeaconsPlaced[MAXPLAYERS+1]; // +2 for every deployment (heal/amplify)
+int playerAmmoDeployments[MAXPLAYERS+1]; // see above, ammo
+int playerDied[MAXPLAYERS+1]; // incicates the player died
+int playerRageQuit[MAXPLAYERS+1]; // player has rage quit
 
 // team bonusses
-teamUsesTesla;
-teamUsesFlamer;
-teamUsesGrenadeLauncher;
+int teamUsesTesla;
+int teamUsesFlamer;
+int teamUsesGrenadeLauncher;
 
 // database handle
 Database db;
@@ -193,7 +193,7 @@ public void OnClientConnected(client)
     if (playerElo[client] == UNKNOWN || playerElo[client] == UNINITIALIZED || !playerElo[client]) {
         if (IsClientConnected(client) && !IsFakeClient(client)) {
             // db
-            steamid = GetSteamAccountID(client);
+            int steamid = GetSteamAccountID(client);
 
             if (steamid) {
                 // store steam id
@@ -205,9 +205,9 @@ public void OnClientConnected(client)
                 PrintToServer("[ELO] %s", query);
                 DBResultSet results = SQL_Query(db, query);
 
-                elo = DEFAULT_ELO;
-                retry = UNKNOWN;
-                rank = UNKNOWN;
+                int elo = DEFAULT_ELO;
+                int retry = UNKNOWN;
+                int rank = UNKNOWN;
                 char lastMap[128];
 
                 while (SQL_FetchRow(results)) {
@@ -244,7 +244,7 @@ public void OnClientDisconnect(client)
         // player rq
         playerRageQuit[client] = 1;
 
-        groupElo = calculateGroupElo();
+        int groupElo = calculateGroupElo();
         updatePlayerElo(client, groupElo, false);
 
         PrintToChatAll("[ELO] %N did quit during active game, awarding elo penalty");
@@ -302,8 +302,8 @@ public void OnMapStart()
         PrintToServer("[ELO:db] %s", query);
         while (SQL_FetchRow(results)) {
             // params
-            dbEce = SQL_FetchInt(results, 0);
-            difficulty = currentDifficulty.IntValue;
+            int dbEce = SQL_FetchInt(results, 0);
+            int difficulty = currentDifficulty.IntValue;
             mapRetries = SQL_FetchInt(results, 1);
             mapId = SQL_FetchInt(results, 2);
             
@@ -355,8 +355,8 @@ public void ShowPlayerElo(client)
 
 public Action PrintPlayerElo(Handle timer, client)
 {
-    elo = playerElo[client];
-    prevElo = playerPrevElo[client];
+    int elo = playerElo[client];
+    int prevElo = playerPrevElo[client];
 
     if (elo == UNKNOWN || elo == UNINITIALIZED) {
         elo = DEFAULT_ELO;
@@ -377,8 +377,8 @@ public Action PrintPlayerElo(Handle timer, client)
 
 public Action PrintWelcomePlayer(Handle timer, client)
 {
-    elo = playerElo[client]; 
-    prevElo = playerElo[client];
+    int elo = playerElo[client]; 
+    int prevElo = playerElo[client];
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
         PrintToChat(client, "[ELO] welcome %N, you joined a ranked server, for non-casual competative play only.", client);
@@ -397,8 +397,8 @@ public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const 
 
 public Action Event_OnPlayerJoined(Event event, const char[] name, bool dontBroadcast)
 {
-    userid = event.GetInt("userid");
-    client = GetClientOfUserId(userid);
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
     
     if (!playerRanking[client]) {
         OnClientConnected(client);
@@ -411,9 +411,9 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
     // this gets triggered after mission_start, or in game if a player joins
     mapStarted = true;
 
-    numMarines = event.GetInt("count");
-    userid = event.GetInt("userid");
-    client = GetClientOfUserId(userid);
+    int numMarines = event.GetInt("count");
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
 
     // re-fetch player's elo, in case it is unknown
     if (playerElo[client] == UNINITIALIZED || playerElo[client] == UNKNOWN) {
@@ -424,7 +424,7 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
         // check if he dselected marine, aka asw_afk but played
         if (playerActive[client] > numMarines && playerRetries[client] > 0) {
             // asw afk award
-            groupElo = calculateGroupElo();
+            int groupElo = calculateGroupElo();
             updatePlayerElo(client, groupElo, false);
             PrintToChatAll("[ELO] %N did afk during map retry, awarding elo penalty", client);            
         }
@@ -455,7 +455,7 @@ public Action Event_OnMapRestart(Event event, const char[] name, bool dontBroadc
 public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadcast)
 {
     // group elo
-    groupElo = calculateGroupElo();
+    int groupElo = calculateGroupElo();
 
     if (mapStarted == true) {
         // raise fail scores only once every map 
@@ -517,7 +517,7 @@ public Action Print_OnTeamFailed(Handle timer)
 public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
 {
     // group elo
-    groupElo = calculateGroupElo();
+    int groupElo = calculateGroupElo();
 
     CreateTimer(MAP_PRINT_DELAY - 0.2, Print_OnMapSuccess);
 
@@ -551,13 +551,13 @@ public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroa
     float health = event.GetFloat("health");
     if (health == 0.0) {
         // marine died
-        victim = event.GetInt("userid");
-        victimClient = GetClientOfUserId(victim);
+        int victim = event.GetInt("userid");
+        int victimClient = GetClientOfUserId(victim);
         playerDied[victimClient] = 1;
 
         // find out who did this
-        attacker = event.GetInt("attacker");
-        client = GetClientOfUserId(attacker);
+        int attacker = event.GetInt("attacker");
+        int client = GetClientOfUserId(attacker);
 
         // check who did this
         if (victim == attacker) {
@@ -572,50 +572,50 @@ public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroa
 public Action Event_OnHeal(Event event, const char[] name, bool dontBroadcast)
 {
     // look who healed
-    userid = event.GetInt("userid");
-    client = GetClientOfUserId(userid);
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
     playerTeamHeals[client]++;
 }
 
 public Action Event_OnAmmoDeployed(Event event, const char[] name, bool dontBroadcast)
 {
-    userid = event.GetInt("userid");
-    client = GetClientOfUserId(userid);
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
     playerAmmoDeployments[client]++;
 }
 
 public Action Event_OnStuffDeployed(Event event, const char[] name, bool dontBroadcast)
 {
-    client = event.GetInt("marine");
+    int client = event.GetInt("marine");
     playerBeaconsPlaced[client]++;
 }
 
 public Action Event_OnAlienKilled(Event event, const char[] name, bool dontBroadcast)
 {
-    client = event.GetInt("marine");
+    int client = event.GetInt("marine");
     playerAlienKills[client]++;
 }
 
 public Action Event_OnFastReload(Event event, const char[] name, bool dontBroadcast)
 {
-    client = event.GetInt("marine");
-    reloadSpree = event.GetInt("reloads");
+    int client = event.GetInt("marine");
+    int reloadSpree = event.GetInt("reloads");
 
-    if (reloads >= 5) {
+    if (reloadSpree >= 5) {
         playerFastReloadExpert[client] = 1;
     }
 }
 
 public Action Event_OnInfestionCure(Event event, const char[] name, bool dontBroadcast)
 {
-    userid = event.GetInt("curer");
-    client = GetClientOfUserId(userid);
+    int userid = event.GetInt("curer");
+    int client = GetClientOfUserId(userid);
     playerTeamInfestedCures[client]++;
 }
 
 public Action Event_OnAchievement(Event event, const char[] name, bool dontBroadcast)
 {
-    client = event.GetInt("player");
+    int client = event.GetInt("player");
     playerAchievementEarned[client]++;
 }
 
@@ -664,10 +664,10 @@ public Action changeRandomMap(Handle timer)
 
 public calculateGroupElo()
 {
-    totalElo = 0;
-    totalSpectatorElo = 0;
-    players = 0;
-    spectators = 0;
+    int totalElo = 0;
+    int totalSpectatorElo = 0;
+    int players = 0;
+    int spectators = 0;
 
     for (new i = 1; i <= MaxClients; i++) {
         if (isValidPlayer(i)) {
@@ -703,12 +703,12 @@ public void updatePlayerElo(client, groupElo, bool success)
 {
     // calculate new elo
     playerPrevElo[client] = playerElo[client];
-    elo = calculateElo(client, groupElo, success);
+    int elo = calculateElo(client, groupElo, success);
 
     // write it to db
     if (elo > UNKNOWN) {
         // get some player information
-        steamid = playerSteamId[client];
+        int steamid = playerSteamId[client];
 
         // store elo
         char query[1024];
@@ -717,7 +717,7 @@ public void updatePlayerElo(client, groupElo, bool success)
         db.Query(dbQuery, query, client);
 
         // store history
-        gain = elo - playerPrevElo[client];
+        int gain = elo - playerPrevElo[client];
         FormatEx(query, sizeof(query), "INSERT INTO player_history (steamid, elo, gain, map_challenge, difficulty) values (%d, %d, %d, %d, %d)", steamid, elo, gain, mapId, currentDifficulty.IntValue);
         PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
@@ -746,7 +746,7 @@ public void updatePlayerElo(client, groupElo, bool success)
 
 public calculateElo(client, groupEloScore, bool success) 
 {
-    currentElo = playerElo[client];
+    int currentElo = playerElo[client];
     float groupElo = groupEloScore + 0.0;
 
     float elo = currentElo + 0.0;
@@ -764,7 +764,7 @@ public calculateElo(client, groupEloScore, bool success)
     
     // team heals
     if (playerTeamHeals[client] > 0) {
-        healPoints = playerTeamHeals[client];
+        int healPoints = playerTeamHeals[client];
         if (healPoints > 100) {
             healPoints = 100;
         }
@@ -773,7 +773,7 @@ public calculateElo(client, groupEloScore, bool success)
 
     // alien kills
     if (playerAlienKills[client] > 0) {
-        kills = playerAlienKills[client];
+        int kills = playerAlienKills[client];
         if (kills > 100) {
             kills = 100;
         }
