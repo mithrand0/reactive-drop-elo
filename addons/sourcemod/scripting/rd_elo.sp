@@ -798,6 +798,10 @@ public calculateElo(client, groupEloScore, bool success)
         if (playerAmmoDeployments[client] > 0) {
             ece += ece * 0.01 * playerAmmoDeployments[client];
         }
+        if (playerTeamDamageDone[client] < 1 && playerAlienDamageTaken[client] < 1) {
+            // perfect!
+            ece += ece * 0.2;
+        }
     }
 
     if (playerAlienDamageTaken[client] > 0) {
@@ -808,15 +812,9 @@ public calculateElo(client, groupEloScore, bool success)
         ece -= ece * 0.0001 * playerTeamDamageDone[client];
     }
 
-    if (playerTeamDamageDone[client] < 1 && playerAlienDamageTaken[client] < 1) {
-        // perfect!
-        ece += ece * 0.2;
-    }
-
     if (playerRageQuit[client] > 0) {
         ece -= ece * 0.3;
     }
-
 
     // do not calculate if client is uninitialized
     if (currentElo == UNINITIALIZED) {
