@@ -49,14 +49,14 @@ public Plugin myinfo =
  ****************************/
 
 // mapece
-mapEce = UNINITIALIZED;
-mapId = UNINITIALIZED;
-mapRetries = UNINITIALIZED;
+int mapEce = UNINITIALIZED;
+int mapId = UNINITIALIZED;
+int mapRetries = UNINITIALIZED;
 char mapName[128];
 bool mapStarted = false;
 
 // team
-teamRetries = UNKNOWN;
+int teamRetries = UNKNOWN;
 
 // some convars we need to check
 ConVar currentChallenge;
