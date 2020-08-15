@@ -802,13 +802,15 @@ public calculateElo(client, groupEloScore, bool success)
 
     if (playerAlienDamageTaken[client] > 0) {
         ece -= ece * 0.001 * playerAlienDamageTaken[client]; 
-    } else {
-        // perfect!
-        ece += ece * 0.1;
     }
 
     if (playerTeamDamageDone[client] > 0) {
         ece -= ece * 0.0001 * playerTeamDamageDone[client];
+    }
+
+    if (playerTeamDamageDone[client] < 1 && playerAlienDamageTaken[client] < 1) {
+        // perfect!
+        ece += ece * 0.2;
     }
 
     if (playerRageQuit[client] > 0) {
