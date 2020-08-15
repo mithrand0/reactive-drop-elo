@@ -179,7 +179,7 @@ public void dbQuery(Database handle, DBResultSet results, const char[] error, an
  * Player client functions
  ****************************/
 
-public bool isValidPlayer(client)
+public bool isValidPlayer(int client)
 {
     return IsClientConnected(client) && IsClientInGame(client) && !IsFakeClient(client) && playerActive[client] > 0;
 }
@@ -188,7 +188,7 @@ public bool isValidPlayer(client)
   * When a client connects, reset the slot with default data. This also
   * fetches ELO rating from the database.
   */
-public void OnClientConnected(client)
+public void OnClientConnected(int client)
 {
     if (playerElo[client] == UNKNOWN || playerElo[client] == UNINITIALIZED || !playerElo[client]) {
         if (IsClientConnected(client) && !IsFakeClient(client)) {
@@ -237,7 +237,7 @@ public void OnClientConnected(client)
   * OnClientDisconnect is triggered on map change, use the _Post
   * variance to make sure the client is not coming back
   */
-public void OnClientDisconnect(client)
+public void OnClientDisconnect(int client)
 {
     // check if the player was playing
     if (playerActive[client] > 0 && mapStarted == true) {
@@ -347,13 +347,13 @@ public void disableReadyOverride()
 /**
   * Display ELO to players
   */
-public void ShowPlayerElo(client)
+public void ShowPlayerElo(int client)
 {
     CreateTimer(MAP_PRINT_DELAY + 0.2, PrintWelcomePlayer, client);
     CreateTimer(MAP_PRINT_DELAY + 1.0, PrintPlayerElo, client);
 }
 
-public Action PrintPlayerElo(Handle timer, client)
+public Action PrintPlayerElo(Handle timer, int client)
 {
     int elo = playerElo[client];
     int prevElo = playerPrevElo[client];
@@ -375,7 +375,7 @@ public Action PrintPlayerElo(Handle timer, client)
     }
 }
 
-public Action PrintWelcomePlayer(Handle timer, client)
+public Action PrintWelcomePlayer(Handle timer, int client)
 {
     int elo = playerElo[client]; 
     int prevElo = playerElo[client];
@@ -687,7 +687,7 @@ public calculateGroupElo()
     return RoundFloat(totalElo / players + 0.0);
 }
 
-public void updatePlayerRetry(client)
+public void updatePlayerRetry(int client)
 {
     // escape map name
     char escapedMapName[256];
@@ -699,7 +699,7 @@ public void updatePlayerRetry(client)
     db.Query(dbQuery, query, client);
 }
 
-public void updatePlayerElo(client, groupElo, bool success)
+public void updatePlayerElo(int client, int groupElo, bool success)
 {
     // calculate new elo
     playerPrevElo[client] = playerElo[client];
@@ -744,7 +744,7 @@ public void updatePlayerElo(client, groupElo, bool success)
     playerActive[client] = 0;
 }
 
-public calculateElo(client, groupEloScore, bool success) 
+public calculateElo(int client, int groupEloScore, bool success) 
 {
     int currentElo = playerElo[client];
     float groupElo = groupEloScore + 0.0;
