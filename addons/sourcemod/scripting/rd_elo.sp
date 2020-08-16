@@ -853,6 +853,10 @@ public calculateElo(int client, int groupEloScore, bool success)
 
 public void cleanRankings()
 {
+    // cleanup old entries
     db.Query(dbQuery, "UPDATE player_score set retry = 0, last_map = NULL where updated_at < date_sub(now(), interval 1 hour)");
     db.Query(dbQuery, "DELETE FROM player_history where updated_at < date_sub(now(), interval 2 week)");
+
+    // players loose elo after some time of inactivity, down to the initial elo of 1500
+    db.Query(dbQuery, "UPDATE player_score set elo = elo - 10 where elo > 1510 and updated_at < date_sub(now(), interval 1 week");
 }
