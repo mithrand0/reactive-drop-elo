@@ -87,9 +87,11 @@ int playerFastReloadExpert[MAXPLAYERS+1];  // one time +10 after 5th fast reload
 int playerAchievementEarned[MAXPLAYERS+1]; // +10 for every achievement (does this trigger is already achieved?)
 int playerBeaconsPlaced[MAXPLAYERS+1]; // +2 for every deployment (heal/amplify)
 int playerAmmoDeployments[MAXPLAYERS+1]; // see above, ammo
+int playerTeamExtinguishes[MAXPLAYERS+1]; // player has extinguised another player
+
+// player state
 int playerDied[MAXPLAYERS+1]; // incicates the player died
 int playerRageQuit[MAXPLAYERS+1]; // player has rage quit
-int playerTeamExtinguishes[MAXPLAYERS+1]; // player has extinguised another player
 
 // team bonusses
 // int teamUsesTesla;
@@ -230,29 +232,25 @@ public void OnClientConnected(int client)
 
                 // fetch elo
                 char query[256];
-                FormatEx(query, sizeof(query), "SELECT elo, retry, last_map, FIND_IN_SET(elo, (SELECT GROUP_CONCAT(elo ORDER BY elo DESC) FROM player_score)) FROM player_score WHERE steamid = %d", steamid);
+                FormatEx(query, sizeof(query), "SELECT elo, scoreboard, FIND_IN_SET(elo, (SELECT GROUP_CONCAT(elo ORDER BY elo DESC) FROM player_score)) FROM player_score WHERE steamid = %d", steamid);
                 PrintToServer("[ELO] %s", query);
                 DBResultSet results = SQL_Query(db, query);
 
                 int elo = DEFAULT_ELO;
-                int retry = UNKNOWN;
                 int rank = UNKNOWN;
-                char lastMap[128];
+                char scoreboard[256];
 
                 while (SQL_FetchRow(results)) {
                     elo = SQL_FetchInt(results, 0);
-                    retry = SQL_FetchInt(results, 1);
-                    rank = SQL_FetchInt(results, 3);
-                    SQL_FetchString(results, 2, lastMap, sizeof(lastMap));
+                    SQL_FetchString(results, 1, scoreboard, sizeof(scoreboard));
+                    rank = SQL_FetchInt(results, 2);
                 }
                 playerElo[client] = elo;
                 playerPrevElo[client] = UNINITIALIZED;
                 playerRanking[client] = rank;
 
-                // if the last_map is the same as the current one, assign retry
-                if (StrEqual(lastMap, mapName)) {
-                    playerRetries[client] = retry;
-                }
+                // load the scoreboard
+                loadPlayerScoreboard(client, scoreboard);
 
                 delete results;
             }
@@ -284,24 +282,8 @@ public void OnClientDisconnect(int client)
         int groupElo = calculateGroupElo();
         updatePlayerElo(client, groupElo, false);
 
-        PrintToChatAll("[ELO] %N did (rage)quit during active game, assining elo penalty");
+        PrintToChatAll("[ELO] %N did (rage) quit during active game, assining elo penalty");
     }
-
-    // erase the scoreboard, for the next client
-    playerRetries[client] = 0;
-    playerTeamKills[client] = 0;
-    playerAlienDamageTaken[client] = 0;
-    playerTeamDamageDone[client] = 0;
-    playerSuicide[client] = 0;
-    playerTeamHeals[client] = 0;
-    playerAlienKills[client] = 0;
-    playerTeamInfestedCures[client] = 0;
-    playerFastReloadExpert[client] = 0;
-    playerAchievementEarned[client] = 0;
-    playerBeaconsPlaced[client] = 0;
-    playerAmmoDeployments[client] = 0;
-    playerDied[client] = 0;
-    playerRageQuit[client] = 0;
 }
 
 /*****************************
@@ -552,7 +534,8 @@ public Action Event_OnMapFailed(Event event)
                     teamRetries = playerRetries[i];
                 }
 
-                updatePlayerRetry(i);
+                // store player scoreboard
+                storePlayerScoreboard(i);
 
                 if (playerRetries[i] >= mapRetries) {
                     // one player hit retry limit, probably whole lobby did
@@ -820,7 +803,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
 
         // store elo
         char query[1024];
-        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo, version) values (%d, %d, '%s') ON DUPLICATE KEY UPDATE elo = %d, retry = 0, last_map = ''", steamid, elo, VERSION, elo);
+        FormatEx(query, sizeof(query), "INSERT INTO player_score (steamid, elo, version) values (%d, %d, '%s') ON DUPLICATE KEY UPDATE elo = %d, last_map = ''", steamid, elo, VERSION, elo);
         PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
 
@@ -829,6 +812,9 @@ public void updatePlayerElo(int client, int groupElo, bool success)
         FormatEx(query, sizeof(query), "INSERT INTO player_history (steamid, elo, gain, map_challenge, difficulty) values (%d, %d, %d, %d, %d)", steamid, elo, gain, mapId, currentDifficulty.IntValue);
         PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
+
+        // reset scoreboard
+        resetPlayerScoreboard(client);
 
         // if we can retrieve a name, update it
         if (isValidPlayer(client)) {
@@ -985,4 +971,105 @@ public void printDebugMessage(int client)
             PrintToChatAll("[ELO:debug] %s", debugMessage);
         }
     }
+}
+
+public void storePlayerScoreboard(int client)
+{
+    FormatEx(debugMessage, sizeof(debugMessage), "Store scoreboard");
+    printDebugMessage(client);
+
+    int steamid = GetSteamAccountID(client);
+    char scoreboard[256];
+    FormatEx(
+        scoreboard, 
+        sizeof(scoreboard), 
+        "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+        playerRetries[client],
+        playerTeamKills[client],
+        playerAlienDamageTaken[client],
+        playerTeamDamageDone[client],
+        playerSuicide[client],
+        playerTeamHeals[client],
+        playerAlienKills[client],
+        playerTeamInfestedCures[client],
+        playerFastReloadExpert[client],
+        playerAchievementEarned[client],
+        playerBeaconsPlaced[client],
+        playerAmmoDeployments[client],
+        playerTeamExtinguishes[client]
+    );
+
+    char query[512];
+    FormatEx(query, sizeof(query), "UPDATE player_score set scoreboard = '%s' where steamid = %d", scoreboard, steamid);
+    PrintToServer("[ELO:db] %s", query);
+    db.Query(dbQuery, query, client);
+}
+
+public void resetPlayerScoreboard(int client)
+{
+    FormatEx(debugMessage, sizeof(debugMessage), "Reset scoreboard");
+    printDebugMessage(client);
+
+    int steamid = GetSteamAccountID(client);
+
+    playerRetries[client] = 0;
+    playerTeamKills[client] = 0;
+    playerAlienDamageTaken[client] = 0;
+    playerTeamDamageDone[client] = 0;
+    playerSuicide[client] = 0;
+    playerTeamHeals[client] = 0;
+    playerAlienKills[client] = 0;
+    playerTeamInfestedCures[client] = 0;
+    playerFastReloadExpert[client] = 0;
+    playerAchievementEarned[client] = 0;
+    playerBeaconsPlaced[client] = 0;
+    playerAmmoDeployments[client] = 0;
+    playerTeamExtinguishes[client] = 0;
+
+    playerDied[client] = 0;
+    playerRageQuit[client] = 0;
+
+    char query[128];
+    FormatEx(query, sizeof(query), "UPDATE player_score set scoreboard = '' where steamid = %d", steamid);
+    PrintToServer("[ELO:db] %s", query);
+    db.Query(dbQuery, query, client);
+}
+
+public int getVal(const char[][] buffer, int position)
+{
+    char value[8];
+    FormatEx(value, sizeof(value), buffer[position]);
+    FormatEx(debugMessage, sizeof(debugMessage), "Scoreboard position %d has value %s", position, value);
+
+    return StringToInt(value);
+}
+
+
+public void loadPlayerScoreboard(int client, const char[] scoreboard)
+{
+    FormatEx(debugMessage, sizeof(debugMessage), "Loading scoreboard: %s", scoreboard);
+    printDebugMessage(client);
+
+    char buf[16][8];
+    ExplodeString(scoreboard, ",", buf, sizeof(buf), 8);
+ 
+    playerRetries[client] = getVal(buf, 0);
+    playerTeamKills[client] = getVal(buf, 1);
+    playerAlienDamageTaken[client] = getVal(buf, 2);
+    playerTeamDamageDone[client] = getVal(buf, 3);
+    playerSuicide[client] = getVal(buf, 4);
+    playerTeamHeals[client] = getVal(buf, 5);
+    playerAlienKills[client] = getVal(buf, 6);
+    playerTeamInfestedCures[client] = getVal(buf, 7);
+    playerFastReloadExpert[client] = getVal(buf, 8);
+    playerAchievementEarned[client] = getVal(buf, 9);
+    playerBeaconsPlaced[client] = getVal(buf, 10);
+    playerAmmoDeployments[client] = getVal(buf, 11);
+    playerTeamExtinguishes[client] = getVal(buf, 12);  
+
+    FormatEx(debugMessage, sizeof(debugMessage), "Retry set at %d", playerRetries[client]); 
+    printDebugMessage(client);
+
+    FormatEx(debugMessage, sizeof(debugMessage), "Suicides set at %d", playerSuicide[client]); 
+    printDebugMessage(client);
 }
