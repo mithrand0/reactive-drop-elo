@@ -27,6 +27,7 @@ public Plugin myinfo =
 /*****************************
  * Constants
  ****************************/
+
 #define UNINITIALIZED -1
 #define UNKNOWN 0
 #define DEFAULT_ELO 1500
@@ -42,7 +43,6 @@ public Plugin myinfo =
 #define DIFFICULTY_HARD 3
 #define DIFFICULTY_INSANE 4
 #define DIFFICULTY_BRUTAL 5
-
 
 /*****************************
  * Global variables
@@ -72,6 +72,7 @@ int playerPrevElo[MAXPLAYERS+1];
 int playerActive[MAXPLAYERS+1];
 int playerSteamId[MAXPLAYERS+1];
 int playerRanking[MAXPLAYERS+1];
+int playerHealthRemaining[MAXPLAYERS+1];
 
 // player bonusses
 int playerRetries[MAXPLAYERS+1];   // elo penalty after 3rd (asbi 4th) retry, or 10% additional loss immediately on ragequit
@@ -88,14 +89,43 @@ int playerBeaconsPlaced[MAXPLAYERS+1]; // +2 for every deployment (heal/amplify)
 int playerAmmoDeployments[MAXPLAYERS+1]; // see above, ammo
 int playerDied[MAXPLAYERS+1]; // incicates the player died
 int playerRageQuit[MAXPLAYERS+1]; // player has rage quit
+int playerTeamExtinguishes[MAXPLAYERS+1]; // player has extinguised another player
 
 // team bonusses
-int teamUsesTesla;
-int teamUsesFlamer;
-int teamUsesGrenadeLauncher;
+// int teamUsesTesla;
+// int teamUsesFlamer;
+// int teamUsesGrenadeLauncher;
 
 // database handle
 Database db;
+
+// debug message
+bool debugEnabled = true;
+char debugMessage[512];
+
+// event hooks
+new String:eventHooksPost[][] = {
+    "achievement_earned",
+    "alien_died",
+    "damage_amplifier_placed",
+    "fast_reload",
+    "heal_beacon_placed",
+    "marine_hurt",
+    "marine_extinguished",
+    "marine_infested_cured",
+    "marine_selected",
+    "player_fullyjoined",
+    "player_heal",
+    "player_heal_target",
+    "player_deploy_ammo"
+};
+
+new String:eventHooksPre[][] = {
+    "asw_mission_restart",
+    "mission_failed",
+    "mission_success"
+};
+
 
 /*****************************
  * Plugin start
@@ -127,20 +157,15 @@ public void OnPluginStart()
     // disable map voting
     aswVoteFraction.SetFloat(2.0);
     
-    // hook into player events
-    HookEvent("marine_selected", Event_OnMarineSelected);
-    HookEvent("player_fullyjoined", Event_OnPlayerJoined);
+    // hook into pre events
+    for (new v=0; v<sizeof(eventHooksPre); v++) {
+        HookEvent(eventHooksPre[v], Event_Dispatcher, EventHookMode_Pre);
+    }
 
-    // mission events
-    HookEvent("mission_success", Event_OnMapSuccess, EventHookMode_Pre);
-    HookEvent("mission_failed", Event_OnMapFailed, EventHookMode_Pre);
-    HookEvent("asw_mission_restart", Event_OnMapRestart, EventHookMode_Pre);
-
-    // marine takes damage
-    HookEvent("marine_hurt", Event_OnMarineDamage);
-
-    // an alien died
-    HookEvent("alien_died", Event_OnAlienKilled);
+    // hook into post events
+    for (new v=0; v<sizeof(eventHooksPost); v++) {
+        HookEvent(eventHooksPost[v], Event_Dispatcher, EventHookMode_Post);
+    }
 
     // log
     PrintToServer("[ELO] initialized");
@@ -190,6 +215,10 @@ public bool isValidPlayer(int client)
   */
 public void OnClientConnected(int client)
 {
+    // logging
+    FormatEx(debugMessage, sizeof(debugMessage), "OnClientConnected trigged");
+    printDebugMessage(client);
+
     if (playerElo[client] == UNKNOWN || playerElo[client] == UNINITIALIZED || !playerElo[client]) {
         if (IsClientConnected(client) && !IsFakeClient(client)) {
             // db
@@ -239,15 +268,23 @@ public void OnClientConnected(int client)
   */
 public void OnClientDisconnect(int client)
 {
+    // logging
+    FormatEx(debugMessage, sizeof(debugMessage), "OnClientDisconnect triggered");
+    printDebugMessage(client);
+
     // check if the player was playing
     if (playerActive[client] > 0 && mapStarted == true) {
+        // logging
+        FormatEx(debugMessage, sizeof(debugMessage), "Player did ragequit");
+        printDebugMessage(client);
+
         // player rq
         playerRageQuit[client] = 1;
 
         int groupElo = calculateGroupElo();
         updatePlayerElo(client, groupElo, false);
 
-        PrintToChatAll("[ELO] %N did quit during active game, awarding elo penalty");
+        PrintToChatAll("[ELO] %N did (rage)quit during active game, assining elo penalty");
     }
 
     // erase the scoreboard, for the next client
@@ -276,6 +313,10 @@ public void OnClientDisconnect(int client)
   */
 public void OnMapStart()
 {
+    // logging
+    FormatEx(debugMessage, sizeof(debugMessage), "OnMapStart triggered");
+    printDebugMessage(UNKNOWN);
+
     // check if ff and onslaught are on
     if (friendlyFireAbsorbtion.IntValue != 0) {
         PrintToChatAll("[ELO] friendly fire needs to be enabled for ranked game");
@@ -389,13 +430,50 @@ public Action PrintWelcomePlayer(Handle timer, int client)
  * Events
  ****************************/
 
+public Action Event_Dispatcher(Event event, const char[] name, bool dontBroadcast)
+{
+    FormatEx(debugMessage, sizeof(debugMessage), "Event dispatched: %s", name);
+    printDebugMessage(UNKNOWN);
+
+    if (StrEqual(name, "marine_selected")) {
+        return Event_OnMarineSelected(event);
+    } else if (StrEqual(name, "player_fullyjoined")) {
+        return Event_OnPlayerJoined(event);
+    } else if (StrEqual(name, "mission_success")) {
+        return Event_OnMapSuccess(event);
+    } else if (StrEqual(name, "mission_failed") || StrEqual(name, "asw_mission_restart")) {
+        return Event_OnMapFailed(event);
+    } else if (StrEqual(name, "marine_hurt")) {
+        return Event_OnMarineDamage(event);
+    } else if (StrEqual(name, "player_heal") || StrEqual(name, "player_heal_target")) {
+        return Event_OnHeal(event);
+    } else if (StrEqual(name, "player_deploy_ammo")) {
+        return Event_OnAmmoDeployed(event);
+    } else if (StrEqual(name, "damage_amplifier_placed") || StrEqual(name, "heal_beacon_placed")) {
+        return Event_OnStuffDeployed(event);
+    } else if (StrEqual(name, "alien_died")) {
+        return Event_OnAlienKilled(event);
+    } else if (StrEqual(name, "marine_extinguished")) {
+        return Event_OnMarineExtinguished(event);
+    } else if (StrEqual(name, "marine_infested_cured")) {
+        return Event_OnInfestionCure(event);
+    } else if (StrEqual(name, "achievement_earned")) {
+        return Event_OnAchievement(event);
+    } else {
+        FormatEx(debugMessage, sizeof(debugMessage), "Event not forwarded: %s", name);
+    }
+
+    return Plugin_Continue;
+}
+
+
 public void Event_OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
     // relay to map start
     OnMapStart();
 }
 
-public Action Event_OnPlayerJoined(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnPlayerJoined(Event event)
 {
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
@@ -404,9 +482,11 @@ public Action Event_OnPlayerJoined(Event event, const char[] name, bool dontBroa
         OnClientConnected(client);
     }
     ShowPlayerElo(client);
+
+    return Plugin_Continue;
 }
 
-public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMarineSelected(Event event)
 {
     // this gets triggered after mission_start, or in game if a player joins
     mapStarted = true;
@@ -442,17 +522,17 @@ public Action Event_OnMarineSelected(Event event, const char[] name, bool dontBr
     return Plugin_Continue;
 }
 
-public Action Event_OnMapRestart(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMapRestart(Event event)
 {
     // relay to map failed
     if (mapStarted) {
-        return Event_OnMapFailed(event, name, dontBroadcast);
+        return Event_OnMapFailed(event);
     } else {
         return Plugin_Continue;
     }
 }
 
-public Action Event_OnMapFailed(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMapFailed(Event event)
 {
     // group elo
     int groupElo = calculateGroupElo();
@@ -514,7 +594,7 @@ public Action Print_OnTeamFailed(Handle timer)
     PrintToChatAll("[ELO] team failed too often, changing map..");
 }
 
-public Action Event_OnMapSuccess(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMapSuccess(Event event)
 {
     // group elo
     int groupElo = calculateGroupElo();
@@ -545,20 +625,31 @@ public Action Print_OnMapSuccess(Handle timer)
  * Mid game events
  ****************************/
 
-public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMarineDamage(Event event)
 {
     // find how much the marine is hurt
     float health = event.GetFloat("health");
-    if (health == 0.0) {
-        // marine died
-        int victim = event.GetInt("userid");
-        int victimClient = GetClientOfUserId(victim);
+
+    // marine
+    int victim = event.GetInt("userid");
+    int victimClient = GetClientOfUserId(victim);
+
+    // find out who did this
+    int attacker = event.GetInt("attacker");
+    int client = GetClientOfUserId(attacker);
+
+    // store attacker damage
+    int damage = 1;
+    if (playerHealthRemaining[client] > 0) {
+        // we know exactly how much
+        damage = RoundFloat(playerHealthRemaining[client] - health);
+    }
+    playerTeamDamageDone[client] += damage;
+    playerHealthRemaining[client] = RoundFloat(health);
+
+    if (playerHealthRemaining[client] == 0) {
         playerDied[victimClient] = 1;
-
-        // find out who did this
-        int attacker = event.GetInt("attacker");
-        int client = GetClientOfUserId(attacker);
-
+        
         // check who did this
         if (victim == attacker) {
             // self inflicted
@@ -567,36 +658,42 @@ public Action Event_OnMarineDamage(Event event, const char[] name, bool dontBroa
             playerTeamKills[client]++;
         }    
     }
+
+    return Plugin_Continue;
 }
 
-public Action Event_OnHeal(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnHeal(Event event)
 {
     // look who healed
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
     playerTeamHeals[client]++;
+    return Plugin_Continue;
 }
 
-public Action Event_OnAmmoDeployed(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnAmmoDeployed(Event event)
 {
     int userid = event.GetInt("userid");
     int client = GetClientOfUserId(userid);
     playerAmmoDeployments[client]++;
+    return Plugin_Continue;
 }
 
-public Action Event_OnStuffDeployed(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnStuffDeployed(Event event)
 {
     int client = event.GetInt("marine");
     playerBeaconsPlaced[client]++;
+    return Plugin_Continue;
 }
 
-public Action Event_OnAlienKilled(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnAlienKilled(Event event)
 {
     int client = event.GetInt("marine");
     playerAlienKills[client]++;
+    return Plugin_Continue;
 }
 
-public Action Event_OnFastReload(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnFastReload(Event event)
 {
     int client = event.GetInt("marine");
     int reloadSpree = event.GetInt("reloads");
@@ -604,19 +701,30 @@ public Action Event_OnFastReload(Event event, const char[] name, bool dontBroadc
     if (reloadSpree >= 5) {
         playerFastReloadExpert[client] = 1;
     }
+    return Plugin_Continue;
 }
 
-public Action Event_OnInfestionCure(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnInfestionCure(Event event)
 {
     int userid = event.GetInt("curer");
     int client = GetClientOfUserId(userid);
     playerTeamInfestedCures[client]++;
+    return Plugin_Continue;
 }
 
-public Action Event_OnAchievement(Event event, const char[] name, bool dontBroadcast)
+public Action Event_OnMarineExtinguished(Event event)
+{
+    int userid = event.GetInt("extinguisher");
+    int client = GetClientOfUserId(userid);
+    playerTeamExtinguishes[client]++;
+    return Plugin_Continue;
+}
+
+public Action Event_OnAchievement(Event event)
 {
     int client = event.GetInt("player");
     playerAchievementEarned[client]++;
+    return Plugin_Continue;
 }
 
 /*****************************
@@ -791,6 +899,11 @@ public calculateElo(int client, int groupEloScore, bool success)
         ece += ece * 0.01 * playerAchievementEarned[client];
     }
 
+    // extinguishes
+    if (playerTeamExtinguishes[client] > 0) {
+        ece += ece * 0.01 * playerTeamExtinguishes[client];
+    }
+
     // only if player actually did something
     if (playerAlienKills[client] > 5 || playerTeamHeals[client] > 5) {
         
@@ -859,4 +972,17 @@ public void cleanRankings()
 
     // players loose elo after some time of inactivity, down to the initial elo of 1500
     db.Query(dbQuery, "UPDATE player_score set elo = elo - 10 where elo > 1510 and updated_at < date_sub(now(), interval 1 week");
+}
+
+public void printDebugMessage(int client)
+{
+    if (debugEnabled == true) {
+        if (client != UNKNOWN && isValidPlayer(client)) {
+            PrintToServer("[ELO:debug] %L: %s", client, debugMessage);
+            PrintToChatAll("[ELO:debug] %L: %s", client, debugMessage);
+        } else {
+            PrintToServer("[ELO:debug] %s", debugMessage);
+            PrintToChatAll("[ELO:debug] %s", debugMessage);
+        }
+    }
 }
