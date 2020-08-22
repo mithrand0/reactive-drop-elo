@@ -33,8 +33,6 @@ public Plugin myinfo =
 #define DEFAULT_ELO 1500
 #define MAP_RESTART_DELAY 6
 #define MAP_PRINT_DELAY 2
-#define MAP_MAX_RESTARTS 3
-#define MAX_TEAMKILLS 2
 
 // difficulties
 #define DIFFICULTY_NOTSET 0
