@@ -30,7 +30,7 @@ public Plugin myinfo =
 
 #define UNINITIALIZED -1
 #define UNKNOWN 0
-#define DEFAULT_ELO 1500
+#define DEFAULT_ELO 1200
 #define MAP_RESTART_DELAY 6
 #define MAP_PRINT_DELAY 2
 
