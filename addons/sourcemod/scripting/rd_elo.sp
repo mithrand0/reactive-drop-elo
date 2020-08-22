@@ -664,25 +664,33 @@ public Action Event_OnAmmoDeployed(Event event)
 
 public Action Event_OnStuffDeployed(Event event)
 {
-    int client = event.GetInt("marine");
-    playerBeaconsPlaced[client]++;
+    int entindex = event.GetInt("marine");
+    if (entindex != UNKNOWN) {
+        int client = GetClientUserId(entindex);
+        playerBeaconsPlaced[client]++;
+    }
     return Plugin_Continue;
 }
 
 public Action Event_OnAlienKilled(Event event)
 {
-    int client = event.GetInt("marine");
-    playerAlienKills[client]++;
+    int entindex = event.GetInt("marine");
+    if (entindex != UNKNOWN) {
+        int client = GetClientUserId(entindex);
+        playerAlienKills[client]++;
+    }
     return Plugin_Continue;
 }
 
 public Action Event_OnFastReload(Event event)
 {
-    int client = event.GetInt("marine");
-    int reloadSpree = event.GetInt("reloads");
-
-    if (reloadSpree >= 5) {
-        playerFastReloadExpert[client] = 1;
+    int entindex = event.GetInt("marine");
+    if (entindex != UNKNOWN) {
+        int client = GetClientUserId(entindex);
+        int reloadSpree = event.GetInt("reloads");
+        if (reloadSpree >= 5) {
+            playerFastReloadExpert[client] = 1;
+        }
     }
     return Plugin_Continue;
 }
@@ -705,8 +713,11 @@ public Action Event_OnMarineExtinguished(Event event)
 
 public Action Event_OnAchievement(Event event)
 {
-    int client = event.GetInt("player");
-    playerAchievementEarned[client]++;
+    int entindex = event.GetInt("player");
+    if (entindex != UNKNOWN) {
+        int client = GetClientUserId(entindex);
+        playerAchievementEarned[client]++;
+    }
     return Plugin_Continue;
 }
 
