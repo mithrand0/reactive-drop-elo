@@ -403,7 +403,7 @@ public Action PrintWelcomePlayer(Handle timer, int client)
     int prevElo = playerElo[client];
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
-        PrintToChat(client, "[ELO] welcome %N, you joined a ranked server, for non-casual competative play only.", client);
+        PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %d", client, version);
     }
 }
 
