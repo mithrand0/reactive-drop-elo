@@ -901,24 +901,20 @@ public calculateElo(int client, int groupEloScore, bool success)
         ece += ece * 0.01 * playerTeamExtinguishes[client];
     }
 
-    // only if player actually did something
-    if (playerAlienKills[client] > 5 || playerTeamHeals[client] > 5) {
-        
-        // support beacon bonus 
-        if (playerBeaconsPlaced[client] > 0) {
-            ece += ece * 0.01 * playerBeaconsPlaced[client];
-        }
+    // support beacon bonus 
+    if (playerBeaconsPlaced[client] > 0) {
+        ece += ece * 0.01 * playerBeaconsPlaced[client];
+    }
 
-        // ammo deployment bonus, todo: detect if it was for others
-        if (playerAmmoDeployments[client] > 0) {
-            ece += ece * 0.01 * playerAmmoDeployments[client];
-        }
+    // ammo deployment bonus, todo: detect if it was for others
+    if (playerAmmoDeployments[client] > 0) {
+        ece += ece * 0.01 * playerAmmoDeployments[client];
+    }
 
-        // marine killed, and played perfect
-        if (playerAlienKills[client] > 15 && playerTeamDamageDone[client] < 1 && playerAlienDamageTaken[client] < 1) {
-            // perfect!
-            ece += ece * 0.2;
-        }
+    // marine played perfect
+    if (playerTeamDamageDone[client] < 1 && playerAlienDamageTaken[client] < 1) {
+        // perfect!
+        ece += ece * 0.2;
     }
 
     // personal damage taken from swarm
