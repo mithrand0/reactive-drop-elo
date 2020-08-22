@@ -31,6 +31,7 @@ public Plugin myinfo =
 #define UNINITIALIZED -1
 #define UNKNOWN 0
 #define DEFAULT_ELO 1200
+#define OFFSET_ELO 600
 #define MAP_RESTART_DELAY 6
 #define MAP_PRINT_DELAY 2
 
@@ -937,7 +938,7 @@ public calculateElo(int client, int groupEloScore, bool success)
     } else if (ece != UNINITIALIZED) {
         // success
         if (success == true) {
-            float gain = (ece - groupElo + 600) / 10;
+            float gain = (ece - groupElo + OFFSET_ELO) / 10;
             if (gain <= 4.0) {
                 elo = elo + 1.0;
             } else {
@@ -945,7 +946,7 @@ public calculateElo(int client, int groupEloScore, bool success)
             }
         } else {
             // failure
-            float eloPenalty = (groupElo - ece + 600) / 10;
+            float eloPenalty = (groupElo - ece + OFFSET_ELO) / 10;
             if (eloPenalty > 0.0) {
                 elo = elo - (elo / groupElo) * eloPenalty;
             }
