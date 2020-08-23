@@ -207,7 +207,16 @@ public void dbQuery(Database handle, DBResultSet results, const char[] error, an
 
 public bool isValidPlayer(int client)
 {
-    return IsClientConnected(client) && IsClientInGame(client) && !IsFakeClient(client) && playerActive[client] > 0;
+    return IsClientConnected(client) && IsClientInGame(client) && !IsFakeClient(client) && isActivePlayer(client);
+}
+
+public bool isActivePlayer(int client)
+{
+    if (client == UNKNOWN || client > MAXPLAYERS) {
+        return false;
+    } else {
+        return playerActive[client] > 0;
+    }
 }
 
 /**
@@ -272,6 +281,7 @@ public void OnClientDisconnect(int client)
     // check if the player was playing
     if (playerActive[client] > 0 && mapStarted == true) {
         // logging
+        PrintToChatAll("[ELO] %N did (rage) quit during active game, assining elo penalty");
         FormatEx(debugMessage, sizeof(debugMessage), "Player did ragequit");
         printDebugMessage(client);
 
@@ -280,8 +290,6 @@ public void OnClientDisconnect(int client)
 
         int groupElo = calculateGroupElo();
         updatePlayerElo(client, groupElo, false);
-
-        PrintToChatAll("[ELO] %N did (rage) quit during active game, assining elo penalty");
     }
 }
 
@@ -403,7 +411,7 @@ public Action PrintWelcomePlayer(Handle timer, int client)
     int prevElo = playerElo[client];
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
-        PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %d", client, version);
+        PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %d", client, VERSION);
     }
 }
 
@@ -526,7 +534,7 @@ public Action Event_OnMapFailed(Event event)
         // iterate players
         teamRetries = 0;
         for (new i = 1; i <= MaxClients; i++) {            
-            if (isValidPlayer(i)) {
+            if (isActivePlayer(i)) {
                 
                 playerRetries[i]++;
                 if (playerRetries[i] > teamRetries) {
@@ -549,7 +557,7 @@ public Action Event_OnMapFailed(Event event)
             // award elo penalty
             for (new i = 1; i <= MaxClients; i++) { 
                 // award if player was active and tried more than one time
-                if (isValidPlayer(i) && playerRetries[i] > 1) {
+                if (isActivePlayer(i) && playerRetries[i] > 1) {
                     updatePlayerElo(i, groupElo, false);
                 }
             }
@@ -584,6 +592,8 @@ public Action Event_OnMapSuccess(Event event)
     CreateTimer(MAP_PRINT_DELAY - 0.2, Print_OnMapSuccess);
 
     for (new i = 1; i <= MaxClients; i++) {
+        
+        // check if the player is still here
         if (isValidPlayer(i)) {
             // award elo
             updatePlayerElo(i, groupElo, true);
@@ -663,9 +673,8 @@ public Action Event_OnAmmoDeployed(Event event)
 
 public Action Event_OnStuffDeployed(Event event)
 {
-    int entindex = event.GetInt("marine");
-    if (entindex != UNKNOWN) {
-        int client = GetClientUserId(entindex);
+    int client = event.GetInt("marine");
+    if (isActivePlayer(client)) {
         playerBeaconsPlaced[client]++;
     }
     return Plugin_Continue;
@@ -673,9 +682,8 @@ public Action Event_OnStuffDeployed(Event event)
 
 public Action Event_OnAlienKilled(Event event)
 {
-    int entindex = event.GetInt("marine");
-    if (entindex != UNKNOWN) {
-        int client = GetClientUserId(entindex);
+    int client = event.GetInt("marine");
+    if (isActivePlayer(client)) {
         playerAlienKills[client]++;
     }
     return Plugin_Continue;
@@ -683,9 +691,8 @@ public Action Event_OnAlienKilled(Event event)
 
 public Action Event_OnFastReload(Event event)
 {
-    int entindex = event.GetInt("marine");
-    if (entindex != UNKNOWN) {
-        int client = GetClientUserId(entindex);
+    int client = event.GetInt("marine");
+    if (isActivePlayer(client)) {
         int reloadSpree = event.GetInt("reloads");
         if (reloadSpree >= 5) {
             playerFastReloadExpert[client] = 1;
@@ -712,9 +719,8 @@ public Action Event_OnMarineExtinguished(Event event)
 
 public Action Event_OnAchievement(Event event)
 {
-    int entindex = event.GetInt("player");
-    if (entindex != UNKNOWN) {
-        int client = GetClientUserId(entindex);
+    int client = event.GetInt("player");
+    if (isActivePlayer(client)) {
         playerAchievementEarned[client]++;
     }
     return Plugin_Continue;
@@ -819,7 +825,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
 
         // store history
         int gain = elo - playerPrevElo[client];
-        FormatEx(query, sizeof(query), "INSERT INTO player_history (steamid, elo, gain, map_challenge, difficulty) values (%d, %d, %d, %d, %d)", steamid, elo, gain, mapId, currentDifficulty.IntValue);
+        FormatEx(query, sizeof(query), "INSERT INTO player_history (steamid, elo, gain, map_challenge, difficulty, version) values (%d, %d, %d, %d, %d, '%s')", steamid, elo, gain, mapId, currentDifficulty.IntValue, VERSION);
         PrintToServer("[ELO:db] %s", query);
         db.Query(dbQuery, query, client);
 
