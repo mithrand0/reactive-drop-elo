@@ -358,9 +358,9 @@ public void OnMapStart()
                 }
             }
 
-            PrintToChatAll("[ELO] map ece is %d with %d tries", mapEce, mapRetries);
+            PrintToChatAll("[ELO] ranking enabled, map ece is %d with %d tries", mapEce, mapRetries);
         } else {
-            PrintToChatAll("[ELO] unsupported map, difficulty or challenge");
+            PrintToChatAll("[ELO] unsupported map, difficulty or challenge, ranking is disabled.");
         }
     }
 
