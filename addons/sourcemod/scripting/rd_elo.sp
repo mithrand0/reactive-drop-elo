@@ -101,7 +101,7 @@ int playerRageQuit[MAXPLAYERS+1]; // player has rage quit
 Database db;
 
 // debug message
-bool debugEnabled = true;
+bool debugEnabled = false;
 char debugMessage[512];
 
 // event hooks
@@ -411,7 +411,7 @@ public Action PrintWelcomePlayer(Handle timer, int client)
     int prevElo = playerElo[client];
 
     if (prevElo == UNINITIALIZED || elo == prevElo) {
-        PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %d", client, VERSION);
+        PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %s", client, VERSION);
     }
 }
 
