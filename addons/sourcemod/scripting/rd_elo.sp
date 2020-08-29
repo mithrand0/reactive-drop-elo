@@ -998,7 +998,7 @@ public void storePlayerScoreboard(int client)
     FormatEx(debugMessage, sizeof(debugMessage), "Store scoreboard");
     printDebugMessage(client);
 
-    int steamid = GetSteamAccountID(client);
+    int steamid = playerSteamId[client];
     char scoreboard[1024];
     FormatEx(
         scoreboard, 
