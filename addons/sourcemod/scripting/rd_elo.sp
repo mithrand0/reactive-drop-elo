@@ -281,7 +281,7 @@ public void OnClientDisconnect(int client)
     // check if the player was playing
     if (playerActive[client] > 0 && mapStarted == true) {
         // logging
-        PrintToChatAll("[ELO] %N did (rage) quit during active game, assining elo penalty");
+        PrintToChatAll("[ELO] player did quit during active game, assigning elo penalty");
         FormatEx(debugMessage, sizeof(debugMessage), "Player did ragequit");
         printDebugMessage(client);
 
