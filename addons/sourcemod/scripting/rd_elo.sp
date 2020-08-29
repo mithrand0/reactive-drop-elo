@@ -1067,7 +1067,7 @@ public void resetPlayerScoreboard(int client)
     FormatEx(debugMessage, sizeof(debugMessage), "Reset scoreboard");
     printDebugMessage(client);
 
-    int steamid = GetSteamAccountID(client);
+    int steamid = playerSteamId[client];
 
     playerRetries[client] = 0;
     playerTeamKills[client] = 0;
