@@ -12,7 +12,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define VERSION "0.10.1"
+#define VERSION "0.11"
 
 /* Plugin Info */
 public Plugin myinfo =
@@ -801,7 +801,7 @@ public void updatePlayerRetry(int client)
     db.Escape(mapName, escapedMapName, sizeof(escapedMapName));
 
     char query[512];
-    FormatEx(query, sizeof(query), "UPDATE player_score set retry = %d, last_map = '%s' where steamid = %d", playerRetries[client], escapedMapName, playerSteamId[client]);
+    FormatEx(query, sizeof(query), "UPDATE player_score set last_map = '%s' where steamid = %d", playerRetries[client], escapedMapName, playerSteamId[client]);
     PrintToServer("[ELO:db] %s", query);
     db.Query(dbQuery, query, client);
 }
@@ -965,11 +965,24 @@ public calculateElo(int client, int groupEloScore, bool success)
 public void cleanRankings()
 {
     // cleanup old entries
-    db.Query(dbQuery, "UPDATE player_score set retry = 0, last_map = NULL where updated_at < date_sub(now(), interval 1 hour)");
-    db.Query(dbQuery, "DELETE FROM player_history where updated_at < date_sub(now(), interval 2 week)");
+    db.Query(dbQuery, "UPDATE player_score set last_map = NULL where updated_at < date_sub(now(), interval 1 hour)");
+    db.Query(dbQuery, "DELETE FROM player_history where updated_at < date_sub(now(), interval 6 month)");
+
+    // players loose elo if they (rage)quit with an active scoreboard, and never join back
+    db.Query(dbQuery,
+        "INSERT INTO player_history (steamid, elo, gain, scoreboard, version) 
+            SELECT steamid, elo * 0.90, 0 - elo * 0.10, '{ \"ragequit\": 1, \"score\": \"-10%\" }', version FROM player_score
+            WHERE scoreboard IS NOT NULL AND scoreboard != '' AND updated_at < date_sub(now(), interval 4 hour)"
+    );  
+    db.Query(dbQuery, "UPDATE player_score set scoreboard = NULL, elo = elo * 0.90 where scoreboard IS NOT NULL AND scoreboard != '' AND updated_at < date_sub(now(), interval 4 hour)")
 
     // players loose elo after some time of inactivity, down to the initial elo of 1500
-    db.Query(dbQuery, "UPDATE player_score set elo = elo - 10 where elo > 1510 and updated_at < date_sub(now(), interval 1 week");
+    db.Query(dbQuery,
+        "INSERT INTO player_history (steamid, elo, gain, scoreboard, version) 
+            SELECT steamid, elo * 0.99, 0 - elo * 0.01, '{ \"inactivity\": 1, \"score\": \"-1%\" }', version FROM player_score
+            WHERE elo >= 1200 * 0.01 and updated_at < date_sub(now(), interval 1 week)"
+    );  
+    db.Query(dbQuery, "UPDATE player_score set elo = elo * 0.99 where elo >= 1200 * 0.01 and updated_at < date_sub(now(), interval 1 week)");
 }
 
 public void printDebugMessage(int client)
@@ -991,7 +1004,7 @@ public void storePlayerScoreboard(int client)
     printDebugMessage(client);
 
     int steamid = GetSteamAccountID(client);
-    char scoreboard[256];
+    char scoreboard[512];
     FormatEx(
         scoreboard, 
         sizeof(scoreboard), 
@@ -1011,8 +1024,59 @@ public void storePlayerScoreboard(int client)
         playerTeamExtinguishes[client]
     );
 
-    char query[512];
-    FormatEx(query, sizeof(query), "UPDATE player_score set scoreboard = '%s' where steamid = %d", scoreboard, steamid);
+    // store scoreboard
+    char query[1024];
+    FormatEx(
+        query, 
+        sizeof(query), 
+        "UPDATE player_score set scoreboard = '%s' where steamid = %d", 
+        scoreboard, 
+        steamid
+    );
+    PrintToServer("[ELO:db] %s", query);
+    db.Query(dbQuery, query, client);
+
+    // store in history in json format as well
+    FormatEx(
+        scoreboard,
+        sizeof(scoreboard),
+        "{
+            \"playerRetries\": %d,
+            \"playerTeamKills\": %d,
+            \"playerAlienDamageTaken\": %d,
+            \"playerTeamDamageDone\": %d,
+            \"playerSuicide\": %d,
+            \"playerTeamHeals\": %d,
+            \"playerAlienKills\": %d,
+            \"playerTeamInfestedCures\": %d,
+            \"playerFastReloadExpert\": %d,
+            \"playerAchievementEarned\: %d,
+            \"playerBeaconsPlaced\": %d,
+            \"playerAmmoDeployments\": %d,
+            \"playerTeamExtinguishes\": %d
+        }",
+        playerRetries[client],
+        playerTeamKills[client],
+        playerAlienDamageTaken[client],
+        playerTeamDamageDone[client],
+        playerSuicide[client],
+        playerTeamHeals[client],
+        playerAlienKills[client],
+        playerTeamInfestedCures[client],
+        playerFastReloadExpert[client],
+        playerAchievementEarned[client],
+        playerBeaconsPlaced[client],
+        playerAmmoDeployments[client],
+        playerTeamExtinguishes[client]        
+    )
+
+    FormatEx(
+        query, 
+        sizeof(query), 
+        "UPDATE player_history set scoreboard = '%s' where steamid = %d and scoreboard IS NULL AND updated_at > date_sub(now(), interval 1 hour) ORDER BY updated_at DESC LIMIT 1",
+        scoreboard,
+        steamid
+    );
     PrintToServer("[ELO:db] %s", query);
     db.Query(dbQuery, query, client);
 }
@@ -1042,7 +1106,7 @@ public void resetPlayerScoreboard(int client)
     playerRageQuit[client] = 0;
 
     char query[128];
-    FormatEx(query, sizeof(query), "UPDATE player_score set scoreboard = '' where steamid = %d", steamid);
+    FormatEx(query, sizeof(query), "UPDATE player_score set scoreboard = NULL where steamid = %d", steamid);
     PrintToServer("[ELO:db] %s", query);
     db.Query(dbQuery, query, client);
 }
