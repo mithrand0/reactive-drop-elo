@@ -12,7 +12,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define VERSION "0.11"
+#define VERSION "0.11.1"
 
 /* Plugin Info */
 public Plugin myinfo =
@@ -385,33 +385,37 @@ public void ShowPlayerElo(int client)
 
 public Action PrintPlayerElo(Handle timer, int client)
 {
-    int elo = playerElo[client];
-    int prevElo = playerPrevElo[client];
+    if (isValidPlayer(client)) {
+        int elo = playerElo[client];
+        int prevElo = playerPrevElo[client];
 
-    if (elo == UNKNOWN || elo == UNINITIALIZED) {
-        elo = DEFAULT_ELO;
-    }
-
-    if (prevElo == UNINITIALIZED || elo == prevElo) {
-        if (playerRanking[client] == UNKNOWN) {
-            PrintToChatAll("[ELO] %N has no ranking", client);
-        } else {
-            PrintToChatAll("[ELO] %N is ranked #%d and has %d elo", client, playerRanking[client], elo);
+        if (elo == UNKNOWN || elo == UNINITIALIZED) {
+            elo = DEFAULT_ELO;
         }
-    } else if (elo > prevElo) {
-        PrintToChatAll("[ELO] %N has gained %d elo and has now %d", client, elo - prevElo, elo);
-    } else {
-        PrintToChatAll("[ELO] %N has lost %d elo and has now %d", client, prevElo - elo, elo);
+
+        if (prevElo == UNINITIALIZED || elo == prevElo || playerRetries[client] > 0) {
+            if (playerRanking[client] == UNKNOWN) {
+                PrintToChatAll("[ELO] %N has no ranking", client);
+            } else {
+                PrintToChatAll("[ELO] %N is ranked #%d and has %d elo", client, playerRanking[client], elo);
+            }
+        } else if (elo > prevElo) {
+            PrintToChatAll("[ELO] %N has gained %d elo and has now %d", client, elo - prevElo, elo);
+        } else {
+            PrintToChatAll("[ELO] %N has lost %d elo and has now %d", client, prevElo - elo, elo);
+        }
     }
 }
 
 public Action PrintWelcomePlayer(Handle timer, int client)
 {
-    int elo = playerElo[client]; 
-    int prevElo = playerElo[client];
+    if (isValidPlayer(client)) {
+        int elo = playerElo[client]; 
+        int prevElo = playerElo[client];
 
-    if (prevElo == UNINITIALIZED || elo == prevElo) {
-        PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %s", client, VERSION);
+        if (prevElo == UNINITIALIZED || elo == prevElo) {
+            PrintToChat(client, "[ELO] welcome %N. You joined a ranked server, ELO version is %s", client, VERSION);
+        }
     }
 }
 
