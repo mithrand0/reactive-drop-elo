@@ -969,18 +969,13 @@ public void cleanRankings()
     db.Query(dbQuery, "DELETE FROM player_history where updated_at < date_sub(now(), interval 6 month)");
 
     // players loose elo if they (rage)quit with an active scoreboard, and never join back
-    db.Query(dbQuery,
-        "INSERT INTO player_history (steamid, elo, gain, scoreboard, version) 
-            SELECT steamid, elo * 0.90, 0 - elo * 0.10, '{ \"ragequit\": 1, \"score\": \"-10%\" }', version FROM player_score
-            WHERE scoreboard IS NOT NULL AND scoreboard != '' AND updated_at < date_sub(now(), interval 4 hour)"
+    db.Query(dbQuery,"INSERT INTO player_history (steamid, elo, gain, scoreboard, version) SELECT steamid, elo * 0.90, 0 - elo * 0.10, '{ \"ragequit\": 1, \"score\": \"-10%\" }', version FROM player_score WHERE scoreboard IS NOT NULL AND scoreboard != '' AND updated_at < date_sub(now(), interval 4 hour)"
     );  
-    db.Query(dbQuery, "UPDATE player_score set scoreboard = NULL, elo = elo * 0.90 where scoreboard IS NOT NULL AND scoreboard != '' AND updated_at < date_sub(now(), interval 4 hour)")
+    db.Query(dbQuery, "UPDATE player_score set scoreboard = NULL, elo = elo * 0.90 where scoreboard IS NOT NULL AND scoreboard != '' AND updated_at < date_sub(now(), interval 4 hour)");
 
     // players loose elo after some time of inactivity, down to the initial elo of 1500
     db.Query(dbQuery,
-        "INSERT INTO player_history (steamid, elo, gain, scoreboard, version) 
-            SELECT steamid, elo * 0.99, 0 - elo * 0.01, '{ \"inactivity\": 1, \"score\": \"-1%\" }', version FROM player_score
-            WHERE elo >= 1200 * 0.01 and updated_at < date_sub(now(), interval 1 week)"
+        "INSERT INTO player_history (steamid, elo, gain, scoreboard, version) SELECT steamid, elo * 0.99, 0 - elo * 0.01, '{ \"inactivity\": 1, \"score\": \"-1%\" }', version FROM player_score WHERE elo >= 1200 * 0.01 and updated_at < date_sub(now(), interval 1 week)"
     );  
     db.Query(dbQuery, "UPDATE player_score set elo = elo * 0.99 where elo >= 1200 * 0.01 and updated_at < date_sub(now(), interval 1 week)");
 }
@@ -1004,7 +999,7 @@ public void storePlayerScoreboard(int client)
     printDebugMessage(client);
 
     int steamid = GetSteamAccountID(client);
-    char scoreboard[512];
+    char scoreboard[1024];
     FormatEx(
         scoreboard, 
         sizeof(scoreboard), 
@@ -1025,7 +1020,7 @@ public void storePlayerScoreboard(int client)
     );
 
     // store scoreboard
-    char query[1024];
+    char query[2048];
     FormatEx(
         query, 
         sizeof(query), 
@@ -1040,21 +1035,7 @@ public void storePlayerScoreboard(int client)
     FormatEx(
         scoreboard,
         sizeof(scoreboard),
-        "{
-            \"playerRetries\": %d,
-            \"playerTeamKills\": %d,
-            \"playerAlienDamageTaken\": %d,
-            \"playerTeamDamageDone\": %d,
-            \"playerSuicide\": %d,
-            \"playerTeamHeals\": %d,
-            \"playerAlienKills\": %d,
-            \"playerTeamInfestedCures\": %d,
-            \"playerFastReloadExpert\": %d,
-            \"playerAchievementEarned\: %d,
-            \"playerBeaconsPlaced\": %d,
-            \"playerAmmoDeployments\": %d,
-            \"playerTeamExtinguishes\": %d
-        }",
+        "{ \"playerRetries\": %d, \"playerTeamKills\": %d, \"playerAlienDamageTaken\": %d, \"playerTeamDamageDone\": %d, \"playerSuicide\": %d, \"playerTeamHeals\": %d, \"playerAlienKills\": %d,\"playerTeamInfestedCures\": %d, \"playerFastReloadExpert\": %d, \"playerAchievementEarned\": %d, \"playerBeaconsPlaced\": %d, \"playerAmmoDeployments\": %d, \"playerTeamExtinguishes\": %d }",
         playerRetries[client],
         playerTeamKills[client],
         playerAlienDamageTaken[client],
@@ -1068,7 +1049,7 @@ public void storePlayerScoreboard(int client)
         playerBeaconsPlaced[client],
         playerAmmoDeployments[client],
         playerTeamExtinguishes[client]        
-    )
+    );
 
     FormatEx(
         query, 
