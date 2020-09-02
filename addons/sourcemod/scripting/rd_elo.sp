@@ -185,91 +185,6 @@ public void OnPluginStart()
     RegServerCmd("elo_test", Command_UnitTest);
 }
 
-public Action Command_UnitTest(int args)
-{
-    debugEnabled = true;
-    int maps[] = { 700, 900, 1200, 1600, 2400, 2800 };
-    int players[] = { 500, 700, 900, 1100, 1200, 1600, 2200, 2600, 3200};
-    int scoreboard[] = { 1200, 1600, 2200 };
-
-    // test combinations
-    for (new p = 0; p < sizeof(players); p++) {
-        FormatEx(debugMessage, sizeof(debugMessage), "----- player: %d", players[p]);
-        printDebugMessage(UNKNOWN);
-        for (new m = 0; m < sizeof(maps); m++) {
-            TestElo(players[p], maps[m]);
-        }
-    }
-
-    
-    // setup a fake scoreboard
-    playerElo[UNKNOWN] = DEFAULT_ELO;
-    playerAlienKills[UNKNOWN] = 100;
-    playerTeamDamageDone[UNKNOWN] = 20;
-    playerTeamKills[UNKNOWN] = 2;
-    playerTeamExtinguishes[UNKNOWN] = 1;
-    playerAmmoDeployments[UNKNOWN] = 3;
-    playerAlienDamageTaken[UNKNOWN] = 1;
-    
-    // test maps
-    for (new s = 0; s < sizeof(scoreboard); s++) {
-        playerElo[UNKNOWN] = scoreboard[s];
-        FormatEx(debugMessage, sizeof(debugMessage), "----- elo: %d", playerElo[UNKNOWN]);
-        printDebugMessage(UNKNOWN);
-
-        for (new m = 0; m < sizeof(maps); m++) {
-            mapEce = maps[m];
-            int elo = UNINITIALIZED;
-            int gain = UNKNOWN;
-
-            elo = calculateElo(UNKNOWN, scoreboard[s], true);
-            gain = elo - playerElo[UNKNOWN];
-            FormatEx(
-                debugMessage, 
-                sizeof(debugMessage), 
-                "[unit-test:scoreboard] elo: %d, ece: %d, win: %d, new elo: %d", 
-                playerElo[UNKNOWN], mapEce, gain, elo
-            );
-            printDebugMessage(UNKNOWN);
-
-            elo = calculateElo(UNKNOWN, scoreboard[s], false);
-            gain = elo - playerElo[UNKNOWN];
-            FormatEx(
-                debugMessage, 
-                sizeof(debugMessage), 
-                "[unit-test:scoreboard] elo: %d, ece: %d, loss: %d, new elo: %d", 
-                playerElo[UNKNOWN], mapEce, gain, elo
-            );
-            printDebugMessage(UNKNOWN);
-        }
-    }
-
-    // reset stuff
-    mapEce = UNINITIALIZED;
-    resetPlayerScoreboard(UNKNOWN);
-}
-
-public void TestElo(int testElo, int testEce)
-{
-    float fElo = testElo + 0.0;
-    float fEce = testEce + 0.0;
-
-    int winElo = EloRating(fElo, fEce, K_FACTOR, true) - testElo;
-    int lossElo = EloRating(fElo, fEce, K_FACTOR, false) - testElo;
-
-    FormatEx(
-        debugMessage, 
-        sizeof(debugMessage), 
-        "[unit-test:rating] rating: %d, ece: %d, win: %d, loss: %d",
-        testElo,
-        testEce,
-        winElo,
-        lossElo
-    );
-    printDebugMessage(UNKNOWN);
-}
-
-
 /*****************************
  * Database related
  ****************************/
@@ -1401,3 +1316,92 @@ public void loadPlayerScoreboard(int client, const char[] scoreboard)
     FormatEx(debugMessage, sizeof(debugMessage), "Suicides set at %d", playerSuicide[client]); 
     printDebugMessage(client);
 }
+
+/*********************/
+/* Unit tests */
+/*********************/
+
+public Action Command_UnitTest(int args)
+{
+    debugEnabled = true;
+    int maps[] = { 700, 900, 1200, 1600, 2400, 2800 };
+    int players[] = { 500, 700, 900, 1100, 1200, 1600, 2200, 2600, 3200};
+    int scoreboard[] = { 1200, 1600, 2200 };
+
+    // test combinations
+    for (new p = 0; p < sizeof(players); p++) {
+        FormatEx(debugMessage, sizeof(debugMessage), "----- player: %d", players[p]);
+        printDebugMessage(UNKNOWN);
+        for (new m = 0; m < sizeof(maps); m++) {
+            TestElo(players[p], maps[m]);
+        }
+    }
+
+    
+    // setup a fake scoreboard
+    playerElo[UNKNOWN] = DEFAULT_ELO;
+    playerAlienKills[UNKNOWN] = 100;
+    playerTeamDamageDone[UNKNOWN] = 20;
+    playerTeamKills[UNKNOWN] = 2;
+    playerTeamExtinguishes[UNKNOWN] = 1;
+    playerAmmoDeployments[UNKNOWN] = 3;
+    playerAlienDamageTaken[UNKNOWN] = 1;
+    
+    // test maps
+    for (new s = 0; s < sizeof(scoreboard); s++) {
+        playerElo[UNKNOWN] = scoreboard[s];
+        FormatEx(debugMessage, sizeof(debugMessage), "----- elo: %d", playerElo[UNKNOWN]);
+        printDebugMessage(UNKNOWN);
+
+        for (new m = 0; m < sizeof(maps); m++) {
+            mapEce = maps[m];
+            int elo = UNINITIALIZED;
+            int gain = UNKNOWN;
+
+            elo = calculateElo(UNKNOWN, scoreboard[s], true);
+            gain = elo - playerElo[UNKNOWN];
+            FormatEx(
+                debugMessage, 
+                sizeof(debugMessage), 
+                "[unit-test:scoreboard] elo: %d, ece: %d, win: %d, new elo: %d", 
+                playerElo[UNKNOWN], mapEce, gain, elo
+            );
+            printDebugMessage(UNKNOWN);
+
+            elo = calculateElo(UNKNOWN, scoreboard[s], false);
+            gain = elo - playerElo[UNKNOWN];
+            FormatEx(
+                debugMessage, 
+                sizeof(debugMessage), 
+                "[unit-test:scoreboard] elo: %d, ece: %d, loss: %d, new elo: %d", 
+                playerElo[UNKNOWN], mapEce, gain, elo
+            );
+            printDebugMessage(UNKNOWN);
+        }
+    }
+
+    // reset stuff
+    mapEce = UNINITIALIZED;
+    resetPlayerScoreboard(UNKNOWN);
+}
+
+public void TestElo(int testElo, int testEce)
+{
+    float fElo = testElo + 0.0;
+    float fEce = testEce + 0.0;
+
+    int winElo = EloRating(fElo, fEce, K_FACTOR, true) - testElo;
+    int lossElo = EloRating(fElo, fEce, K_FACTOR, false) - testElo;
+
+    FormatEx(
+        debugMessage, 
+        sizeof(debugMessage), 
+        "[unit-test:rating] rating: %d, ece: %d, win: %d, loss: %d",
+        testElo,
+        testEce,
+        winElo,
+        lossElo
+    );
+    printDebugMessage(UNKNOWN);
+}
+
