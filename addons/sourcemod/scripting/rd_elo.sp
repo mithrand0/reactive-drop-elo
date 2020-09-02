@@ -31,7 +31,7 @@ public Plugin myinfo =
 
 #define UNINITIALIZED -1
 #define UNKNOWN 0
-#define DEFAULT_ELO 1200
+#define DEFAULT_ELO 1000
 #define OFFSET_ELO 200
 #define K_FACTOR 32
 #define S_FACTOR 4
@@ -189,8 +189,8 @@ public Action Command_UnitTest(int args)
 {
     debugEnabled = true;
     int maps[] = { 700, 900, 1200, 1600, 2400, 2800 };
-    int players[] = { 500, 700, 900, 1100, DEFAULT_ELO, 1600, 2200, 2600, 3200};
-    int scoreboard[] = { DEFAULT_ELO, 1600, 2200 };
+    int players[] = { 500, 700, 900, 1100, 1200, 1600, 2200, 2600, 3200};
+    int scoreboard[] = { 1200, 1600, 2200 };
 
     // test combinations
     for (new p = 0; p < sizeof(players); p++) {
