@@ -33,6 +33,7 @@ public Plugin myinfo =
 #define UNKNOWN 0
 #define DEFAULT_ELO 1200
 #define OFFSET_ELO 400
+#define K_FACTOR 30
 #define MAP_RESTART_DELAY 6
 #define MAP_PRINT_DELAY 2
 
@@ -108,6 +109,7 @@ Handle lobbyTimer[MAXPLAYERS+1];
 
 // debug message
 bool debugEnabled = true;
+bool unitTests = true;
 char debugMessage[2048];
 
 // event hooks
@@ -178,7 +180,42 @@ public void OnPluginStart()
 
     // log
     PrintToServer("[ELO] initialized");
+
+    // run unit tests
+    if (unitTests == true) {
+        UnitTests();
+    }
 }
+
+public void UnitTest()
+{
+    testElo(1400, 1600, true);
+    testElo(1400, 1600, false);
+    testElo(1400, 1200, true);
+    testElo(1400, 1200, false);
+    testElo(1600, 2400, true);
+    testElo(1600, 2400, false);
+    testElo(700, 1200, true);
+    testElo(700, 1200, false);
+
+}
+
+public void TestElo(int testElo, int testEce, bool success)
+{
+    int newElo = EloRating(testElo, testEce, K_FACTOR, success);
+
+    FormatEx(
+        debugMessage, 
+        sizeof(debugMessage), 
+        "[unit-test] player elo: %d, mac ece: %d, success: %b, new elo: %d",
+        testElo,
+        testEce,
+        success,
+        newElo
+    );
+    printDebugMessage(UNKNOWN);
+}
+
 
 /*****************************
  * Database related
@@ -961,12 +998,7 @@ public calculateElo(int client, int groupEloScore, bool success)
         
     } else if (ece != UNINITIALIZED) {
         // calculate new rating
-        return EloRating(
-            playerElo[client],
-            mapEce,
-            30,
-            success
-        )
+        return EloRating(playerElo[client], mapEce, K_FACTOR, success);
     }
     return UNKNOWN;
 }
@@ -1083,17 +1115,17 @@ public int EloRating(float Ra, float Rb, int K, bool d)
     // Updating the Elo Ratings 
     if (d == 1) { 
         Ra = Ra + K * (1 - Pa); 
-        Rb = Rb + K * (0 - Pb); 
+        // Rb = Rb + K * (0 - Pb); 
     } 
   
     // Case -2 When Map B wins 
     // Updating the Elo Ratings 
     else { 
         Ra = Ra + K * (0 - Pa); 
-        Rb = Rb + K * (1 - Pb); 
+        // Rb = Rb + K * (1 - Pb); 
     } 
   
-    // we just need the player's score
+    // We just need the player's updated elo
     return RoundFloat(Ra);
 } 
 
