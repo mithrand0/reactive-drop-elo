@@ -13,7 +13,7 @@
 #include <sdkhooks>
 #include <clientprefs>
 
-#define VERSION "0.11.1"
+#define VERSION "0.20.0"
 
 /* Plugin Info */
 public Plugin myinfo =
@@ -32,8 +32,9 @@ public Plugin myinfo =
 #define UNINITIALIZED -1
 #define UNKNOWN 0
 #define DEFAULT_ELO 1200
-#define OFFSET_ELO 400
-#define K_FACTOR 30
+#define OFFSET_ELO 200
+#define K_FACTOR 32
+#define S_FACTOR 4
 #define MAP_RESTART_DELAY 6
 #define MAP_PRINT_DELAY 2
 
@@ -108,8 +109,7 @@ Handle lobbyCookie;
 Handle lobbyTimer[MAXPLAYERS+1];
 
 // debug message
-bool debugEnabled = true;
-bool unitTests = true;
+bool debugEnabled = false;
 char debugMessage[2048];
 
 // event hooks
@@ -181,37 +181,90 @@ public void OnPluginStart()
     // log
     PrintToServer("[ELO] initialized");
 
-    // run unit tests
-    if (unitTests == true) {
-        UnitTests();
+    // unit test
+    RegServerCmd("elo_test", Command_UnitTest);
+}
+
+public Action Command_UnitTest(int args)
+{
+    debugEnabled = true;
+    int maps[] = { 700, 900, 1200, 1600, 2400, 2800 };
+    int players[] = { 500, 700, 900, 1100, DEFAULT_ELO, 1600, 2200, 2600, 3200};
+    int scoreboard[] = { DEFAULT_ELO, 1600, 2200 };
+
+    // test combinations
+    for (new p = 0; p < sizeof(players); p++) {
+        FormatEx(debugMessage, sizeof(debugMessage), "----- player: %d", players[p]);
+        printDebugMessage(UNKNOWN);
+        for (new m = 0; m < sizeof(maps); m++) {
+            TestElo(players[p], maps[m]);
+        }
     }
+
+    
+    // setup a fake scoreboard
+    playerElo[UNKNOWN] = DEFAULT_ELO;
+    playerAlienKills[UNKNOWN] = 100;
+    playerTeamDamageDone[UNKNOWN] = 20;
+    playerTeamKills[UNKNOWN] = 2;
+    playerTeamExtinguishes[UNKNOWN] = 1;
+    playerAmmoDeployments[UNKNOWN] = 3;
+    playerAlienDamageTaken[UNKNOWN] = 1;
+    
+    // test maps
+    for (new s = 0; s < sizeof(scoreboard); s++) {
+        playerElo[UNKNOWN] = scoreboard[s];
+        FormatEx(debugMessage, sizeof(debugMessage), "----- elo: %d", playerElo[UNKNOWN]);
+        printDebugMessage(UNKNOWN);
+
+        for (new m = 0; m < sizeof(maps); m++) {
+            mapEce = maps[m];
+            int elo = UNINITIALIZED;
+            int gain = UNKNOWN;
+
+            elo = calculateElo(UNKNOWN, scoreboard[s], true);
+            gain = elo - playerElo[UNKNOWN];
+            FormatEx(
+                debugMessage, 
+                sizeof(debugMessage), 
+                "[unit-test:scoreboard] elo: %d, ece: %d, win: %d, new elo: %d", 
+                playerElo[UNKNOWN], mapEce, gain, elo
+            );
+            printDebugMessage(UNKNOWN);
+
+            elo = calculateElo(UNKNOWN, scoreboard[s], false);
+            gain = elo - playerElo[UNKNOWN];
+            FormatEx(
+                debugMessage, 
+                sizeof(debugMessage), 
+                "[unit-test:scoreboard] elo: %d, ece: %d, loss: %d, new elo: %d", 
+                playerElo[UNKNOWN], mapEce, gain, elo
+            );
+            printDebugMessage(UNKNOWN);
+        }
+    }
+
+    // reset stuff
+    mapEce = UNINITIALIZED;
+    resetPlayerScoreboard(UNKNOWN);
 }
 
-public void UnitTest()
+public void TestElo(int testElo, int testEce)
 {
-    testElo(1400, 1600, true);
-    testElo(1400, 1600, false);
-    testElo(1400, 1200, true);
-    testElo(1400, 1200, false);
-    testElo(1600, 2400, true);
-    testElo(1600, 2400, false);
-    testElo(700, 1200, true);
-    testElo(700, 1200, false);
+    float fElo = testElo + 0.0;
+    float fEce = testEce + 0.0;
 
-}
-
-public void TestElo(int testElo, int testEce, bool success)
-{
-    int newElo = EloRating(testElo, testEce, K_FACTOR, success);
+    int winElo = EloRating(fElo, fEce, K_FACTOR, true) - testElo;
+    int lossElo = EloRating(fElo, fEce, K_FACTOR, false) - testElo;
 
     FormatEx(
         debugMessage, 
         sizeof(debugMessage), 
-        "[unit-test] player elo: %d, mac ece: %d, success: %b, new elo: %d",
+        "[unit-test:rating] rating: %d, ece: %d, win: %d, loss: %d",
         testElo,
         testEce,
-        success,
-        newElo
+        winElo,
+        lossElo
     );
     printDebugMessage(UNKNOWN);
 }
@@ -944,7 +997,7 @@ public void updatePlayerElo(int client, int groupElo, bool success)
 {
     // calculate new elo
     playerPrevElo[client] = playerElo[client];
-    int elo = calculateElo(client, groupElo, success);
+    int elo = calculateEloResult(client, groupElo, success);
 
     // write it to db
     if (elo > UNKNOWN) {
@@ -989,112 +1042,163 @@ public void updatePlayerElo(int client, int groupElo, bool success)
     playerActive[client] = 0;
 }
 
-public calculateElo(int client, int groupEloScore, bool success)
+public int calculateEloResult(int client, int groupElo, bool success)
 {
     // do not calculate if client is uninitialized
+    int currentElo = playerElo[client];
     if (currentElo == UNINITIALIZED) {
         // reconnect the client
         OnClientConnected(client);
         
-    } else if (ece != UNINITIALIZED) {
+    } else if (mapEce != UNINITIALIZED) {
         // calculate new rating
-        return EloRating(playerElo[client], mapEce, K_FACTOR, success);
+        return calculateElo(client, groupElo, success);
     }
     return UNKNOWN;
 }
 
-public applyEloTweaks(int client, int groupEloScore, bool success) 
+public int calculateElo(int client, int groupElo, bool success)
 {
-    int currentElo = playerElo[client];
-    float groupElo = groupEloScore + 0.0;
+    // get plain elo result
+    float newRating = 0.0 + EloRating(playerElo[client] + 0.0, mapEce + 0.0, K_FACTOR, success);
 
-    float elo = currentElo + 0.0;
-    float ece = mapEce + 0.0;
+    // calculate gain and scoreboard modifier 
+    float diff = newRating - playerElo[client];
+    float modifier = calculateEloModifier(client, groupElo);
 
-    // teamkills
-    if (playerTeamKills[client] > 0) {
-        ece = ece * 0.1 * playerTeamKills[client];
+    // apply gain
+    if (success == true) {
+        diff *= modifier;
+
+        // on positive result, also apply map modifier, but clamp to scale factor
+        float mapModifier = mapEce / (0.0 + playerElo[client]);
+        if (mapModifier > S_FACTOR) {
+            mapModifier = 0.0 + S_FACTOR;
+        }
+        diff *= mapModifier;
+
+        // finally, apply s-factor itself to elo
+        diff *= S_FACTOR;
+
+    } else {
+        // losses are always limited
+        diff *= (-1.0 * modifier);
     }
 
-    // suicide
+    return RoundFloat(playerElo[client] + diff);
+}
+
+public float calculateEloModifier(int client, int groupElo) 
+{
+    float modifier = 1.0;
+
+    // teamkills, 2.5% per tk
+    if (playerTeamKills[client] > 0) {
+        modifier -= 0.025 * playerTeamHeals[client];
+    }
+
+    // suicide, 2.5% per suicide, stacks with tk, so effective max 5% total per suicide
     if (playerSuicide[client] > 0)  {
-        ece -= ece * 0.2 * playerSuicide[client];
+        modifier -= 0.025 * playerSuicide[client];
     }
     
-    // team heals
+    // amount of point healed another marine, up to a maximum of 100, max 5% total bonus
     if (playerTeamHeals[client] > 0) {
         int healPoints = playerTeamHeals[client];
         if (healPoints > 100) {
             healPoints = 100;
         }
-        ece += ece * 0.001 * healPoints;
+        modifier += 0.0005 * healPoints;
     }
 
-    // alien kills
+    // aliens kills by player, up to max 300 for a total bonus of max 30%
     if (playerAlienKills[client] > 0) {
         int kills = playerAlienKills[client];
-        if (kills > 100) {
-            kills = 100;
+        if (kills > 300) {
+            kills = 300;
         }
 
-        ece += ece * 0.001 * kills;
+        modifier += 0.001 * kills;
     }
 
-    // marine cures
+    // marine rescued from infestation, 2.5% per marine
     if (playerTeamInfestedCures[client] > 0) {
-        ece += ece * 0.1 * playerTeamInfestedCures[client];
+        modifier += 0.025 * playerTeamInfestedCures[client];
     }
 
-    // achievements
+    // achievements, 1% per achievement
     if (playerAchievementEarned[client] > 0) {
-        ece += ece * 0.01 * playerAchievementEarned[client];
+        modifier += 0.0001 * playerAchievementEarned[client];
     }
 
-    // extinguishes
+    // marines saved from grillfest, 1% per save
     if (playerTeamExtinguishes[client] > 0) {
-        ece += ece * 0.01 * playerTeamExtinguishes[client];
+        modifier += 0.0001 * playerTeamExtinguishes[client];
     }
 
-    // support beacon bonus 
+    // number of heal beacons placed, 0.5% per beacon
     if (playerBeaconsPlaced[client] > 0) {
-        ece += ece * 0.01 * playerBeaconsPlaced[client];
+        modifier += 0.005 * playerBeaconsPlaced[client];
     }
 
-    // ammo deployment bonus, todo: detect if it was for others
+    // number of ammo deployments done, 0.5% per pack
     if (playerAmmoDeployments[client] > 0) {
-        ece += ece * 0.01 * playerAmmoDeployments[client];
+        modifier += 0.005 * playerAmmoDeployments[client];
     }
 
-    // marine played perfect
+    // marine played perfect, award 25% additional bonus 
     if (playerTeamDamageDone[client] < 1 && playerAlienDamageTaken[client] < 1) {
         // perfect!
-        ece += ece * 0.2;
+        modifier += 0.25;
     }
 
-    // personal damage taken from swarm
+    // personal damage taken from swarm, with a maximum of 100, max 5%
     if (playerAlienDamageTaken[client] > 0) {
-        ece -= ece * 0.001 * playerAlienDamageTaken[client]; 
+        int damageTaken = playerAlienDamageTaken[client];
+        if (damageTaken > 100) {
+            damageTaken = 100;
+        }
+        modifier -= 0.0005 * damageTaken; 
     }
 
-    // personal damage done to friendlies
+    // personal damage done to friendlies, aka friendly fire, max 100, effectively 5%
     if (playerTeamDamageDone[client] > 0) {
-        ece -= ece * 0.0001 * playerTeamDamageDone[client];
+        int damageDone = playerTeamDamageDone[client];
+        if (damageDone > 100) {
+            damageDone = 100;
+        }
+        modifier -= 0.0005 * damageDone;
     }
 
-    // ragequit award
+    // ragequit award, -30%
     if (playerRageQuit[client] > 0) {
-        ece -= ece * 0.3;
+        modifier -= 0.30;
     }
 
-   
+    // retry gives slightly less bonus, 2.5% per try
+    if (playerRetries[client] > 0) {
+        modifier -= 0.0025 * playerRetries[client];
+    }
 
-    return RoundFloat(elo);
+    // group modifier, compare player to group and distribute bonus with a relative weight of max 50%
+    float weight = playerElo[client] / (0.0 + groupElo);
+    if (weight < 0.5) {
+        weight = 0.5;
+    } else if (weight > 1.5) {
+        weight = 1.5;
+    }
+
+    // apply group modifier
+    modifier += 1.0 - weight;
+
+    return modifier;
 }
 
 // Function to calculate the Probability 
-public int Probability(int rating1, int rating2) 
+public float Probability(float rating1, float rating2) 
 { 
-    return RoundFloat(1.0 * 1.0 / (1 + 1.0 * pow(10, 1.0 * (rating1 - rating2 + 0.0) / 400)));
+    float exponent = 1.0 * (rating1 - rating2) / (OFFSET_ELO + 0.0);
+    return 1.0 * 1.0 / (1.0 + 1.0 * Pow(10.0, exponent));
 } 
 
 // Function to calculate Elo rating 
@@ -1113,16 +1217,16 @@ public int EloRating(float Ra, float Rb, int K, bool d)
   
     // Case -1 When Player A wins 
     // Updating the Elo Ratings 
-    if (d == 1) { 
+    if (d == true) { 
         Ra = Ra + K * (1 - Pa); 
-        // Rb = Rb + K * (0 - Pb); 
+        Rb = Rb + K * (0 - Pb); 
     } 
   
     // Case -2 When Map B wins 
     // Updating the Elo Ratings 
     else { 
         Ra = Ra + K * (0 - Pa); 
-        // Rb = Rb + K * (1 - Pb); 
+        Rb = Rb + K * (1 - Pb); 
     } 
   
     // We just need the player's updated elo
